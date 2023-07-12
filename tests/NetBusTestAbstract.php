@@ -102,19 +102,19 @@ abstract class NetBusTestAbstract extends TestCase
         }
         static::$wsClients = [];
         static::$wsClientUniqIds = [];
-        foreach (static::$netsvrConfig as $value) {
+        foreach (static::$netsvrConfig as $config) {
             for ($i = 0; $i < static::NETSVR_ONLINE_NUM; $i++) {
                 //将每个网关的serverId转成16进制
-                $hex = ($value['serverId'] < 15 ? '0' . dechex($value['serverId']) : dechex($value['serverId']));
+                $hex = ($config['serverId'] < 15 ? '0' . dechex($config['serverId']) : dechex($config['serverId']));
                 //将网关的serverId的16进制格式拼接到随机的uniqId前面
                 $uniqId = $hex . uniqid();
-                $client = new Client($value["ws"] . $uniqId, ['timeout' => 1]);
+                $client = new Client($config["ws"] . $uniqId, ['timeout' => 1]);
                 try {
                     //这里必须先接收一下，否则接下来的测试会失败，我也搞不懂什么原因
                     $client->receive();
                 } catch (Throwable) {
                 }
-                static::$wsClientUniqIds[$value['serverId']][] = $uniqId;
+                static::$wsClientUniqIds[$config['serverId']][] = $uniqId;
                 static::$wsClients[$uniqId] = $client;
             }
         }

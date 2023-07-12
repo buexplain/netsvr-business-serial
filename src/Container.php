@@ -21,6 +21,7 @@ namespace NetsvrBusiness;
 
 use NetsvrBusiness\Exception\ClassNotFoundException;
 use Psr\Container\ContainerInterface;
+use Closure;
 
 class Container implements ContainerInterface
 {
@@ -67,8 +68,14 @@ class Container implements ContainerInterface
     public function get(string $id): mixed
     {
         if (isset($this->instances[$id])) {
+            if ($this->instances[$id] instanceof Closure) {
+                //如果是闭包，则执行一下得到真正的对象
+                $this->instances[$id] = $this->instances[$id]();
+            }
             return $this->instances[$id];
         }
+        //如果报这个异常，则说明你没有在框架初始化阶段，初始化当前类
+        //具体的初始化方式请参考本包的README.md文件
         throw new ClassNotFoundException('class not exists: ' . $id, $id);
     }
 
