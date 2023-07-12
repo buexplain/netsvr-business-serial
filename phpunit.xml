@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         bootstrap="./tests/bootstrap.php"
+         colors="true"
+         stopOnFailure="true"
+         testdox="true"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.2/phpunit.xsd" cacheDirectory=".phpunit.cache">
+    <testsuites>
+        <testsuite name="Single Netsvr Tests">
+            <file>./tests/NetBusForNetsvrSingleTest.php</file>
+        </testsuite>
+        <testsuite name="Distributed Netsvr Tests">
+            <file>./tests/NetBusForNetsvrDistributedTest.php</file>
+        </testsuite>
+    </testsuites>
+</phpunit>

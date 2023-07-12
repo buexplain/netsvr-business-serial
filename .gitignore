@@ -1,0 +1,8 @@
+.*
+!.gitignore
+!.gitattributes
+vendor
+.php_cs.cache
+.phpunit.cache
+.phpunit.result.cache
+composer.lock
