@@ -23,6 +23,9 @@ use NetsvrBusiness\Exception\ClassNotFoundException;
 use Psr\Container\ContainerInterface;
 use Closure;
 
+/**
+ * 这是一个简单的容器，它真的只是个容器，不支持任何注入机制，只是存放单例对象
+ */
 class Container implements ContainerInterface
 {
     /**
@@ -36,6 +39,12 @@ class Container implements ContainerInterface
      * @var array
      */
     protected array $instances = [];
+
+    /**
+     * 延迟实例化容器中的对象实例的闭包
+     * @var array
+     */
+    protected array $closure = [];
 
     /**
      * 获取当前容器的实例（单例）
@@ -68,10 +77,11 @@ class Container implements ContainerInterface
     public function get(string $id): mixed
     {
         if (isset($this->instances[$id])) {
-            if ($this->instances[$id] instanceof Closure) {
-                //如果是闭包，则执行一下得到真正的对象
-                $this->instances[$id] = $this->instances[$id]();
-            }
+            return $this->instances[$id];
+        }
+        if (isset($this->closure[$id])) {
+            //如果是闭包，则执行一下得到真正的对象
+            $this->instances[$id] = $this->closure[$id]();
             return $this->instances[$id];
         }
         //如果报这个异常，则说明你没有在框架初始化阶段，初始化当前类
@@ -87,11 +97,15 @@ class Container implements ContainerInterface
      */
     public function bind(string $id, object $concrete): void
     {
-        $this->instances[$id] = $concrete;
+        if ($concrete instanceof Closure) {
+            $this->closure[$id] = $concrete;
+        } else {
+            $this->instances[$id] = $concrete;
+        }
     }
 
     public function has(string $id): bool
     {
-        return isset($this->instances[$id]);
+        return isset($this->instances[$id]) || isset($this->closure[$id]);
     }
 }
