@@ -3,6 +3,8 @@
 这是一个可以快速开发websocket单工通信业务的包，它必须在串行的php程序中工作，不能在协程中工作，它基于[https://github.com/buexplain/netsvr](https://github.com/buexplain/netsvr)
 进行工作。
 
+ps：如果你的项目是hyperf框架的，则可以使用这个包：[https://github.com/buexplain/netsvr-business](https://github.com/buexplain/netsvr-business)
+
 ### 名词解释，并不准确，请见谅：
 
 * 单工通信：服务器主动下发数据给客户端，但是客户端不能主动上传数据给服务端
