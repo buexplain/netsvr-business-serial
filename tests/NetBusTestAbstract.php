@@ -77,7 +77,7 @@ abstract class NetBusTestAbstract extends TestCase
         $taskSocketManger = new TaskSocketManger();
         foreach (static::$netsvrConfig as $config) {
             try {
-                $taskSocket = new TaskSocket($config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout']);
+                $taskSocket = new TaskSocket($config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'],117);
                 $taskSocketManger->addSocket($config['serverId'], $taskSocket);
                 $container->bind(TaskSocketInterface::class, $taskSocket);
             } catch (Throwable $throwable) {

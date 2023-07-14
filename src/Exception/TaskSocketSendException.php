@@ -22,9 +22,8 @@ namespace NetsvrBusiness\Exception;
 use RuntimeException;
 
 /**
- * 连接到网关的异常
+ * 发送数据到网关的异常
  */
-class ConnectException extends RuntimeException
+class TaskSocketSendException extends RuntimeException
 {
-
 }

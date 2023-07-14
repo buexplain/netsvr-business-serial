@@ -23,8 +23,9 @@ use Exception;
 use Netsvr\Constant;
 use Netsvr\Router;
 use NetsvrBusiness\Contract\TaskSocketInterface;
+use NetsvrBusiness\Exception\TaskSocketSendException;
 use Throwable;
-use NetsvrBusiness\Exception\ConnectException;
+use NetsvrBusiness\Exception\TaskSocketConnectException;
 use Socket;
 
 /**
@@ -55,101 +56,165 @@ class TaskSocket implements TaskSocketInterface
      */
     protected int $receiveTimeout;
     /**
+     * 最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
+     * 这段时间内，连接没有被使用过，则会认为连接已经被网关的worker服务器关闭
+     * 此后再使用连接，会丢弃当前连接，创建新的连接
+     * @var int
+     */
+    protected int $maxIdleTime;
+    /**
+     * 连接最后被使用的时间
+     * @var int
+     */
+    protected int $lastUseTime = 0;
+    /**
      * socket对象
      * @var Socket|null
      */
     protected ?Socket $socket = null;
 
+    /**
+     * @param string $host netsver网关的worker服务器监听的主机
+     * @param int $port netsver网关的worker服务器监听的端口
+     * @param int $sendTimeout 发送数据超时，单位秒
+     * @param int $receiveTimeout 接收数据超时，单位秒
+     * @param int $maxIdleTime 最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
+     * @throws TaskSocketConnectException
+     */
     public function __construct(
         string $host,
         int    $port,
         int    $sendTimeout,
         int    $receiveTimeout,
+        int    $maxIdleTime,
     )
     {
         $this->host = $host;
         $this->port = $port;
         $this->sendTimeout = $sendTimeout;
         $this->receiveTimeout = $receiveTimeout;
+        $this->maxIdleTime = $maxIdleTime;
         $this->connect();
     }
 
     /**
-     * @param bool $throwErr
      * @return void
+     * @throws TaskSocketConnectException
      */
-    protected function connect(bool $throwErr = true): void
+    protected function connect(): void
     {
         //构造对象
         $socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
         if ($socket === false) {
-            if ($throwErr) {
-                $code = socket_last_error();
-                throw new ConnectException(socket_strerror($code), $code);
-            } else {
-                return;
-            }
+            $code = socket_last_error();
+            throw new TaskSocketConnectException(socket_strerror($code), $code);
+        }
+        //设置为阻塞模式，这样接下来的读取和发送都可以简单操作，否则得循环的操作socket，并判断每次写入或发送了多少，很麻烦
+        if (socket_set_block($socket) === false) {
+            $code = socket_last_error($socket);
+            throw new TaskSocketConnectException(socket_strerror($code), $code);
         }
         //设置接收超时
         if (socket_set_option($socket, SOL_SOCKET, SO_RCVTIMEO, array('sec' => $this->receiveTimeout, 'usec' => 0)) === false) {
-            if ($throwErr) {
-                $code = socket_last_error();
-                throw new ConnectException(socket_strerror($code), $code);
-            } else {
-                return;
-            }
+            $code = socket_last_error($socket);
+            throw new TaskSocketConnectException(socket_strerror($code), $code);
         }
         //设置发送超时
         if (socket_set_option($socket, SOL_SOCKET, SO_SNDTIMEO, array('sec' => $this->sendTimeout, 'usec' => 0)) === false) {
-            if ($throwErr) {
-                $code = socket_last_error();
-                throw new ConnectException(socket_strerror($code), $code);
-            } else {
-                return;
-            }
+            $code = socket_last_error($socket);
+            throw new TaskSocketConnectException(socket_strerror($code), $code);
         }
         //发起连接
-        if (socket_connect($socket, $this->host, $this->port) === false) {
-            if ($throwErr) {
-                $code = socket_last_error();
-                throw new ConnectException(socket_strerror($code), $code);
-            } else {
-                return;
+        try {
+            if (socket_connect($socket, $this->host, $this->port) === false) {
+                $code = socket_last_error($socket);
+                throw new TaskSocketConnectException(socket_strerror($code), $code);
             }
+        } catch (Throwable $throwable) {
+            throw new TaskSocketConnectException($throwable->getMessage(), $throwable->getCode());
         }
         //存储到本对象的属性
         $this->socket = $socket;
+        //初始化socket对象的最后使用时间
+        $this->lastUseTime = time();
+    }
+
+    /**
+     * @return void
+     * @throws TaskSocketConnectException
+     * @throws Throwable
+     */
+    protected function reconnect(): void
+    {
+        for ($i = 0; $i < 3; $i++) {
+            try {
+                $this->connect();
+                break;
+            } catch (Throwable $throwable) {
+                if ($i == 2) {
+                    //三次后还是失败，抛出异常
+                    throw $throwable;
+                }
+            }
+        }
     }
 
     /**
      * @param string $data
      * @return void
+     * @throws TaskSocketSendException
+     * @throws Throwable
      */
     public function send(string $data): void
     {
+        //判断连接是否失效，失效则重连一下
+        if (time() - $this->lastUseTime > $this->maxIdleTime) {
+            //之所以设计这个空闲机制是因为：
+            //连接被对端杀掉后，我方无感知，继续往socket写入数据，不会报错，这样就会导致待发送的数据丢失
+            //其实对端是有返回TCP的RST标志的，我方收到该标志后应该发起重连，但是php的socket扩展不返回这个TCP的RST标志
+            $this->reconnect();
+        }
         //打包数据
         $message = pack('N', strlen($data)) . $data;
-        $retry = 0;
-        loop:
-        $ret = socket_write($this->socket, $message, strlen($message));
-        if ($ret === false) {
-            if ($retry > 0) {
-                usleep(50);
-            }
-            $retry += 1;
-            $this->connect($retry == 3);
-            goto loop;
+        //开始发送数据
+        try {
+            $ret = socket_send($this->socket, $message, strlen($message), 0);
+        } catch (Throwable) {
+            $ret = false;
         }
+        //判断发送结果
+        if ($ret !== false) {
+            //发送成功，更新socket对象的最后使用时间
+            $this->lastUseTime = time();
+            return;
+        }
+        //发送失败，重连一下
+        $this->reconnect();
+        //再次发送
+        try {
+            $ret = socket_send($this->socket, $message, strlen($message), 0);
+        } catch (Throwable) {
+            $ret = false;
+        }
+        //判断发送结果
+        if ($ret !== false) {
+            //发送成功，更新socket对象的最后使用时间
+            $this->lastUseTime = time();
+            return;
+        }
+        //发送失败，抛出异常
+        $code = socket_last_error($this->socket);
+        throw new TaskSocketSendException(socket_strerror($code), $code);
     }
 
     public function __destruct()
     {
-        try {
-            if ($this->socket instanceof Socket) {
+        if ($this->socket instanceof Socket) {
+            try {
                 socket_close($this->socket);
-                $this->socket = null;
+            } catch (Throwable) {
             }
-        } catch (Throwable) {
+            $this->socket = null;
         }
     }
 
@@ -160,8 +225,9 @@ class TaskSocket implements TaskSocketInterface
     public function receive(): Router|false
     {
         //先读取包头长度，4个字节
-        $packageLength = socket_read($this->socket, 4);
-        if ($packageLength === false || $packageLength === '') {
+        $packageLength = '';
+        $receiveRet = socket_recv($this->socket, $packageLength, 4, 0);
+        if ($receiveRet === false || ($receiveRet === 0 && $packageLength === null) || $packageLength === '') {
             return false;
         }
         $ret = unpack('N', $packageLength);
@@ -171,9 +237,10 @@ class TaskSocket implements TaskSocketInterface
             $packageLength = $ret[1];
         }
         //再读取包体数据
-        $packageBody = socket_read($this->socket, $packageLength);
-        //读取失败了
-        if ($packageBody === false || $packageBody === '') {
+        $packageBody = '';
+        $receiveRet = socket_recv($this->socket, $packageBody, $packageLength, 0);
+        //读取失败
+        if ($receiveRet === false || ($receiveRet === 0 && $packageBody === null) || $packageBody === '') {
             return false;
         }
         //读取到了心跳
