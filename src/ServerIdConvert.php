@@ -26,7 +26,7 @@ use NetsvrBusiness\Contract\ServerIdConvertInterface;
  * 目前的实现是uniqId的前两个字符就是serverId的16进制表示，所以截取uniqId的前两个字符、转int即可得到serverId
  * 如果业务侧对网关下发给客户的uniqId进行了变更，导致上面的逻辑失效，则业务侧必须重写这个类的方法，正确的处理uniqId与serverId的转换
  * 不建议业务侧将客户的uniqId与网关的serverId之间的映射关系存储到redis这种需要io查询的存储器上，最好是通过特定的uniqId格式，本进程内cpu计算即可得到，避免io开销
- * 另外需要注意serverId小于15时，转16进制必须补足两位字符串，示例：$hex = ($serverId < 15 ? '0' . dechex($serverId) : dechex($serverId));
+ * 另外需要注意serverId小于16时，转16进制必须补足两位字符串，示例：$hex = ($serverId < 16 ? '0' . dechex($serverId) : dechex($serverId));
  */
 class ServerIdConvert implements ServerIdConvertInterface
 {

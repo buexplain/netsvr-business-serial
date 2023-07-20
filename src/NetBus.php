@@ -19,6 +19,7 @@ declare(strict_types=1);
 
 namespace NetsvrBusiness;
 
+use Exception;
 use Google\Protobuf\Internal\RepeatedField;
 use Netsvr\Broadcast;
 use Netsvr\CheckOnlineReq;
@@ -29,6 +30,7 @@ use Netsvr\ConnInfoReq;
 use Netsvr\ConnInfoResp;
 use Netsvr\ConnInfoRespItem;
 use Netsvr\ConnInfoUpdate;
+use Netsvr\ConnOpenCustomUniqIdTokenResp;
 use Netsvr\ForceOffline;
 use Netsvr\ForceOfflineGuest;
 use Netsvr\LimitReq;
@@ -66,6 +68,37 @@ use ErrorException;
  */
 class NetBus
 {
+    /**
+     * 获取客户端连接网关时，传递自定义uniqId所需的token
+     * 返回的uniqId与token并无绑定关系，你可以采用返回的uniqId，也可以自己构造一个uniqId
+     * @param int $serverId
+     * @return array
+     * @throws ContainerExceptionInterface
+     * @throws ErrorException
+     * @throws NotFoundExceptionInterface
+     * @throws Exception
+     */
+    public static function connOpenCustomUniqIdToken(int $serverId): array
+    {
+        /**
+         * @var $socket TaskSocketInterface
+         */
+        $socket = Container::getInstance()->get(TaskSocketMangerInterface::class)->getSocket($serverId);
+        $router = new Router();
+        $router->setCmd(Cmd::ConnOpenCustomUniqIdToken);
+        $socket->send($router->serializeToString());
+        $router = $socket->receive();
+        if ($router === false) {
+            throw new ErrorException('call Cmd::ConnOpenCustomUniqIdToken failed because the connection to the netsvr was disconnected');
+        }
+        $resp = new ConnOpenCustomUniqIdTokenResp();
+        $resp->mergeFromString($router->getData());
+        return [
+            'uniqId' => $resp->getUniqId(),
+            'token' => $resp->getToken(),
+        ];
+    }
+
     /**
      * 更新客户在网关存储的信息
      * @param ConnInfoUpdate $connInfoUpdate

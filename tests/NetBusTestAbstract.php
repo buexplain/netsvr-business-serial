@@ -77,7 +77,7 @@ abstract class NetBusTestAbstract extends TestCase
         $taskSocketManger = new TaskSocketManger();
         foreach (static::$netsvrConfig as $config) {
             try {
-                $taskSocket = new TaskSocket($config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'],117);
+                $taskSocket = new TaskSocket($config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], 117);
                 $taskSocketManger->addSocket($config['serverId'], $taskSocket);
                 $container->bind(TaskSocketInterface::class, $taskSocket);
             } catch (Throwable $throwable) {
@@ -91,6 +91,9 @@ abstract class NetBusTestAbstract extends TestCase
     /**
      * 向每一个网关都初始化一个websocket连接上去
      * @return void
+     * @throws ContainerExceptionInterface
+     * @throws ErrorException
+     * @throws NotFoundExceptionInterface
      */
     protected function resetWsClient(): void
     {
@@ -104,11 +107,14 @@ abstract class NetBusTestAbstract extends TestCase
         static::$wsClientUniqIds = [];
         foreach (static::$netsvrConfig as $config) {
             for ($i = 0; $i < static::NETSVR_ONLINE_NUM; $i++) {
+                //这里采用自定义的uniqId连接到网关
                 //将每个网关的serverId转成16进制
-                $hex = ($config['serverId'] < 15 ? '0' . dechex($config['serverId']) : dechex($config['serverId']));
+                $hex = ($config['serverId'] < 16 ? '0' . dechex($config['serverId']) : dechex($config['serverId']));
                 //将网关的serverId的16进制格式拼接到随机的uniqId前面
                 $uniqId = $hex . uniqid();
-                $client = new Client($config["ws"] . $uniqId, ['timeout' => 1]);
+                //从网关获取连接所需要的token
+                $token = NetBus::connOpenCustomUniqIdToken($config['serverId'])['token'];
+                $client = new Client($config["ws"] . $uniqId . '&token=' . $token, ['timeout' => 1]);
                 try {
                     //这里必须先接收一下，否则接下来的测试会失败，我也搞不懂什么原因
                     $client->receive();
@@ -139,6 +145,24 @@ abstract class NetBusTestAbstract extends TestCase
     protected function getDefaultUniqIdsByServerId(int $serverId): array
     {
         return static::$wsClientUniqIds[$serverId] ?? [];
+    }
+
+    /**
+     * composer test -- --filter=testConnOpenCustomUniqIdToken
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     * @throws ErrorException
+     */
+    public function testConnOpenCustomUniqIdToken(): void
+    {
+        foreach (static::$netsvrConfig as $config) {
+            $ret = NetBus::connOpenCustomUniqIdToken($config['serverId']);
+            $this->assertNotEmpty($ret['uniqId'], "返回的连接所需uniqId不符合预期");
+            $this->assertNotEmpty($ret['token'], "返回的连接所需token不符合预期");
+            //网关生成的uniqId的前两个字符一定是网关的serverId的16进制表示
+            $serverId = @hexdec(substr($ret['uniqId'], 0, 2));
+            $this->assertTrue($serverId === $config['serverId'], "返回的连接所需uniqId的前两个字符，不符合预期");
+        }
     }
 
     /**
@@ -222,7 +246,7 @@ abstract class NetBusTestAbstract extends TestCase
      * composer test -- --filter=testBroadcast
      * @return void
      * @throws ContainerExceptionInterface
-     * @throws NotFoundExceptionInterface
+     * @throws NotFoundExceptionInterface|ErrorException
      */
     public function testBroadcast(): void
     {
@@ -240,7 +264,7 @@ abstract class NetBusTestAbstract extends TestCase
      * composer test -- --filter=testMulticast
      * @return void
      * @throws ContainerExceptionInterface
-     * @throws NotFoundExceptionInterface
+     * @throws NotFoundExceptionInterface|ErrorException
      */
     public function testMulticast(): void
     {
@@ -259,7 +283,7 @@ abstract class NetBusTestAbstract extends TestCase
      * composer test -- --filter=testSingleCastUnit
      * @return void
      * @throws ContainerExceptionInterface
-     * @throws NotFoundExceptionInterface
+     * @throws NotFoundExceptionInterface|ErrorException
      */
     public function testSingleCastUnit(): void
     {
@@ -282,7 +306,7 @@ abstract class NetBusTestAbstract extends TestCase
      * composer test -- --filter=testSingleCastBulk
      * @return void
      * @throws ContainerExceptionInterface
-     * @throws NotFoundExceptionInterface
+     * @throws NotFoundExceptionInterface|ErrorException
      */
     public function testSingleCastBulk(): void
     {

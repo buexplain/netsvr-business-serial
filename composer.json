@@ -15,7 +15,7 @@
   ],
   "require": {
     "php": ">=8.0",
-    "buexplain/netsvr-protocol-php": "^v1.0",
+    "buexplain/netsvr-protocol-php": "^v1.2.0",
     "psr/container": "^1.0|^2.0",
     "ext-sockets": "*"
   },

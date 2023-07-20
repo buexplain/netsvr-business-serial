@@ -31,7 +31,7 @@ final class NetBusForNetsvrDistributedTest extends NetBusTestAbstract
             'port' => 6061,
             'receiveTimeout' => 30,
             'sendTimeout' => 30,
-            //网关服务器必须支持自定义uniqId连接
+            //网关服务器必须支持自定义uniqId连接，即网关的netsvr.toml的配置项：ConnOpenCustomUniqIdKey，必须是：ConnOpenCustomUniqIdKey = "uniqId"
             'ws' => 'ws://127.0.0.1:6060/netsvr?uniqId=',
         ],
         [
@@ -40,7 +40,7 @@ final class NetBusForNetsvrDistributedTest extends NetBusTestAbstract
             'port' => 6071,
             'receiveTimeout' => 30,
             'sendTimeout' => 30,
-            //网关服务器必须支持自定义uniqId连接
+            //网关服务器必须支持自定义uniqId连接，即网关的netsvr.toml的配置项：ConnOpenCustomUniqIdKey，必须是：ConnOpenCustomUniqIdKey = "uniqId"
             'ws' => 'ws://127.0.0.1:6070/netsvr?uniqId=',
         ],
     ];
