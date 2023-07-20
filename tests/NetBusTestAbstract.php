@@ -481,7 +481,7 @@ abstract class NetBusTestAbstract extends TestCase
         $uniqIds = $this->getDefaultUniqIds();
         NetBus::forceOffline($uniqIds);
         //等待网关执行完连接的关闭逻辑
-        usleep(100);
+        usleep(3100);
         //检查是否在线
         $ret = NetBus::checkOnline($uniqIds);
         $this->assertEmpty($ret);
@@ -503,7 +503,7 @@ abstract class NetBusTestAbstract extends TestCase
         $uniqIds = $this->getDefaultUniqIds();
         NetBus::forceOfflineGuest($uniqIds);
         //等待网关执行完连接的关闭逻辑
-        usleep(100);
+        usleep(3100);
         //检查是否在线
         $ret = NetBus::checkOnline($uniqIds);
         $this->assertEmpty($ret);
@@ -520,7 +520,7 @@ abstract class NetBusTestAbstract extends TestCase
         //再强制下线
         NetBus::forceOfflineGuest($uniqIds);
         //等待网关执行完连接的关闭逻辑
-        usleep(100);
+        usleep(3100);
         //检查是否在线
         $ret = NetBus::checkOnline($uniqIds);
         sort($uniqIds);
