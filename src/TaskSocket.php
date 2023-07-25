@@ -226,7 +226,7 @@ class TaskSocket implements TaskSocketInterface
     {
         //先读取包头长度，4个字节
         $packageLength = '';
-        $receiveRet = socket_recv($this->socket, $packageLength, 4, 0);
+        $receiveRet = socket_recv($this->socket, $packageLength, 4, MSG_WAITALL);
         if ($receiveRet === false || ($receiveRet === 0 && $packageLength === null) || $packageLength === '') {
             return false;
         }
@@ -238,7 +238,7 @@ class TaskSocket implements TaskSocketInterface
         }
         //再读取包体数据
         $packageBody = '';
-        $receiveRet = socket_recv($this->socket, $packageBody, $packageLength, 0);
+        $receiveRet = socket_recv($this->socket, $packageBody, $packageLength, MSG_WAITALL);
         //读取失败
         if ($receiveRet === false || ($receiveRet === 0 && $packageBody === null) || $packageBody === '') {
             return false;
