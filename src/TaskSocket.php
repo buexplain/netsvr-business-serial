@@ -192,7 +192,21 @@ class TaskSocket implements TaskSocketInterface
         $this->reconnect();
         //再次发送
         try {
-            $ret = socket_send($this->socket, $message, strlen($message), 0);
+            $length = strlen($message);
+            while (true) {
+                $ret = socket_write($this->socket, $message, $length);
+                //发送失败，退出循环
+                if ($ret === false) {
+                    break;
+                }
+                //发送成功，检查是否发送完毕
+                if ($ret === $length) {
+                    break;
+                }
+                //没有发送完毕，遇到tcp短写，继续发送
+                $message = substr($message, $ret);
+                $length -= $ret;
+            }
         } catch (Throwable) {
             $ret = false;
         }
