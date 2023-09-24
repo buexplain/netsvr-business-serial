@@ -46,6 +46,7 @@ use Netsvr\TopicCountResp;
 use Netsvr\TopicDelete;
 use Netsvr\TopicListResp;
 use Netsvr\TopicPublish;
+use Netsvr\TopicPublishBulk;
 use Netsvr\TopicSubscribe;
 use Netsvr\TopicUniqIdCountReq;
 use Netsvr\TopicUniqIdCountResp;
@@ -197,23 +198,34 @@ class NetBus
     }
 
     /**
-     * 批量单播，一次性给多个用户发送不同的消息
-     * @param array $uniqIdDataMap key是用户的uniqId，value是发给用户的数据
+     * 批量单播，一次性给多个用户发送不同的消息，或给一个用户发送多条消息
+     * @param array $params 入参示例如下：
+     * ['目标uniqId1'=>'数据1', '目标uniqId2'=>'数据2']
+     * ['uniqIds'=>['目标uniqId1', '目标uniqId2'], 'data'=>['数据1', '数据2']]
+     * ['uniqIds'=>'目标uniqId1', 'data'=>['数据1', '数据2']]
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public static function singleCastBulk(array $uniqIdDataMap): void
+    public static function singleCastBulk(array $params): void
     {
-        if (count($uniqIdDataMap) == 0) {
-            return;
-        }
         //网关是单机部署或者是只给一个用户发消息，则直接构造批量单播对象发送
-        if (self::isSinglePoint() || count($uniqIdDataMap) == 1) {
-            $uniqIds = array_keys($uniqIdDataMap);
+        if (self::isSinglePoint() ||
+            //这种格式的入参：['目标uniqId1'=>'数据1']
+            count($params) === 1 ||
+            //这种格式的入参：['uniqIds'=>'目标uniqId1', 'data'=>['数据1', '数据2']]，['uniqIds'=>['目标uniqId1'], 'data'=>['数据1', '数据2']]
+            (isset($params['data']) && isset($params['uniqIds']) && (!is_array($params['uniqIds']) || count($params['uniqIds']) === 1))
+        ) {
             $singleCastBulk = new SingleCastBulk();
-            $singleCastBulk->setUniqIds($uniqIds);
-            $singleCastBulk->setData(array_values($uniqIdDataMap));
+            if (isset($params['uniqIds']) && isset($params['data'])) {
+                $uniqIds = (array)$params['uniqIds'];
+                $singleCastBulk->setUniqIds($uniqIds);
+                $singleCastBulk->setData((array)$params['data']);
+            } else {
+                $uniqIds = array_keys($params);
+                $singleCastBulk->setUniqIds($uniqIds);
+                $singleCastBulk->setData(array_values($params));
+            }
             $router = new Router();
             $router->setCmd(Cmd::SingleCastBulk);
             $router->setData($singleCastBulk->serializeToString());
@@ -226,11 +238,25 @@ class NetBus
          */
         $serverIdConvert = Container::getInstance()->get(ServerIdConvertInterface::class);
         $bulks = [];
-        foreach ($uniqIdDataMap as $uniqId => $data) {
-            $serverId = $serverIdConvert->single($uniqId);
-            $bulks[$serverId]['uniqIds'][] = $uniqId;
-            $bulks[$serverId]['data'][] = $data;
+        if (isset($params['uniqIds']) && isset($params['data'])) {
+            //这种结构的入参：['uniqIds'=>['目标uniqId1', '目标uniqId2'], 'data'=>['数据1', '数据2']]
+            $params['data'] = (array)$params['data'];
+            $serverIds = $serverIdConvert->bulk($params['uniqIds']);
+            foreach ($params['uniqIds'] as $index => $uniqId) {
+                $serverId = $serverIds[$uniqId];
+                $bulks[$serverId]['uniqIds'][] = $uniqId;
+                $bulks[$serverId]['data'][] = $params['data'][$index];
+            }
+        } else {
+            //这种结构的入参：['目标uniqId1'=>'数据1', '目标uniqId2'=>'数据2']
+            $serverIds = $serverIdConvert->bulk(array_keys($params));
+            foreach ($params as $uniqId => $data) {
+                $serverId = $serverIds[$uniqId];
+                $bulks[$serverId]['uniqIds'][] = $uniqId;
+                $bulks[$serverId]['data'][] = $data;
+            }
         }
+        //分组完毕，循环发送到各个网关
         foreach ($bulks as $serverId => $bulk) {
             $singleCastBulk = new SingleCastBulk();
             $singleCastBulk->setUniqIds($bulk['uniqIds']);
@@ -304,6 +330,7 @@ class NetBus
     }
 
     /**
+     * 发布
      * @param array|string|string[] $topics 需要发布数据的主题
      * @param string $data 需要发给客户的数据
      * @return void
@@ -318,6 +345,37 @@ class NetBus
         $router = new Router();
         $router->setCmd(Cmd::TopicPublish);
         $router->setData($topicPublish->serializeToString());
+        self::sendToSockets($router);
+    }
+
+    /**
+     * 批量发布，一次性给多个主题发送不同的消息，或给一个主题发送多条消息
+     * @param array $params 入参示例如下：
+     * ['目标主题1'=>'数据1', '目标主题2'=>'数据2']
+     * ['topics'=>['目标主题1', '目标主题2'], 'data'=>['数据1', '数据2']]
+     * ['topics'=>'目标主题1', 'data'=>['数据1', '数据2']]
+     * @return void
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     */
+    public static function topicPublishBulk(array $params): void
+    {
+        $topicPublishBulk = new TopicPublishBulk();
+        if (isset($params['topics']) && isset($params['data'])) {
+            //topics的值可以是只有一个，或者是与data的数量一致
+            //['topics'=>'目标主题1', 'data'=>['数据1', '数据2']]
+            //['topics'=>['目标主题1', '目标主题2'], 'data'=>['数据1', '数据2']]
+            $topicPublishBulk->setTopics((array)$params['topics']);
+            $topicPublishBulk->setData((array)$params['data']);
+        } else {
+            //key是topic，value是发给topic的数据，一一对应关系的
+            //['目标主题1'=>'数据1', '目标主题2'=>'数据2']
+            $topicPublishBulk->setTopics(array_keys($params));
+            $topicPublishBulk->setData(array_values($params));
+        }
+        $router = new Router();
+        $router->setCmd(Cmd::TopicPublishBulk);
+        $router->setData($topicPublishBulk->serializeToString());
         self::sendToSockets($router);
     }
 

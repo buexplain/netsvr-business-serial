@@ -23,7 +23,8 @@ ps：如果你的项目是hyperf框架的，则可以使用这个包：[https://
     * 给`Psr\Container\ContainerInterface::class`
       接口的实例单例方式绑定接口：`\NetsvrBusiness\Contract\ServerIdConvertInterface::class`、`\NetsvrBusiness\Contract\TaskSocketMangerInterface::class`
       的实例
-4. 完成以上步骤后，即可在你的业务代码中使用`\NetsvrBusiness\NetBus::class`的静态方法与网关交互，示例：`\NetsvrBusiness\NetBus::broadcast("广播给所有的网关的在线用户一条消息");`
+4. 完成以上步骤后，即可在你的业务代码中使用`\NetsvrBusiness\NetBus::class`
+   的静态方法与网关交互，示例：`\NetsvrBusiness\NetBus::broadcast("广播给所有的网关的在线用户一条消息");`
 
 ## 如何在框架初始化阶段，初始化本包
 
@@ -247,7 +248,9 @@ class NetBusService extends Service
 ```
 
 ### 无`\Psr\Container\ContainerInterface`容器的框架
-其实任意框架都可以用下面的代码，在框架初始化阶段，对本包进行初始化，只是有`\Psr\Container\ContainerInterface`容器的框架，我们就尽量使用框架本身的容器来初始化。
+
+其实任意框架都可以用下面的代码，在框架初始化阶段，对本包进行初始化，只是有`\Psr\Container\ContainerInterface`
+容器的框架，我们就尽量使用框架本身的容器来初始化。
 比如yii2，它就是一个无`\Psr\Container\ContainerInterface`容器的框架，则可以在它的配置文件的`bootstrap`项上加入一个闭包，闭包的具体代码就是：
 
 ```php
@@ -302,9 +305,12 @@ $container->bind(\NetsvrBusiness\Contract\TaskSocketMangerInterface::class, func
 
 ## 如何跑本包的测试用例
 
-1. 下载[网关服务](https://github.com/buexplain/netsvr/releases)的`v2.0.0`版本及以上的程序包
-2. 修改配置文件`netsvr.toml`的`ConnOpenCustomUniqIdKey`项为`ConnOpenCustomUniqIdKey = "uniqId"`、`ServerId`
-   项为`ServerId=0`
+1. 下载[网关服务](https://github.com/buexplain/netsvr/releases)的`v2.1.0`版本及以上的程序包
+2. 修改配置文件`netsvr.toml`
+   - `ConnOpenCustomUniqIdKey`改为`ConnOpenCustomUniqIdKey = "uniqId"`
+   - `ServerId`改为`ServerId=0`
+   - `ConnOpenWorkerId`改为`ConnOpenWorkerId=0`
+   - `ConnCloseWorkerId`改为`ConnCloseWorkerId=0`
 3. 执行命令：`netsvr-windows-amd64.bin -config configs/netsvr.toml`启动网关服务，注意我这个命令是windows系统的，其它系统的，自己替换成对应的网关服务程序包即可
 4. 完成以上步骤后，就启动好一个网关服务了，接下来再启动一个网关服务，目的是测试本包在网关服务多机部署下的正确性
 5. 复制一份`netsvr.toml`为`netsvr-607.toml`，并改动里面的`606`系列端口的为`607`系列端口，避免端口冲突；`ServerId`

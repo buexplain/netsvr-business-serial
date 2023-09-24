@@ -15,7 +15,7 @@
   ],
   "require": {
     "php": ">=8.0",
-    "buexplain/netsvr-protocol-php": "^v1.2.0",
+    "buexplain/netsvr-protocol-php": "^v1.4.0",
     "psr/container": "^1.0|^2.0",
     "ext-sockets": "*"
   },
@@ -32,10 +32,10 @@
   },
   "require-dev": {
     "google/protobuf": "^3.22",
-    "phpunit/phpunit": "^10.2",
-    "textalk/websocket": "^1.5"
+    "phpunit/phpunit": "^9.0",
+    "phrity/websocket": "^1.7"
   },
   "scripts": {
-    "test": "phpunit --configuration phpunit.xml --colors=always"
+    "test": "phpunit --configuration phpunit.xml --coverage-html coverage --verbose --colors=always"
   }
 }

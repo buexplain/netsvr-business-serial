@@ -4,7 +4,7 @@
          colors="true"
          stopOnFailure="true"
          testdox="true"
-         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.2/phpunit.xsd" cacheDirectory=".phpunit.cache">
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.6/phpunit.xsd">
     <testsuites>
         <testsuite name="Single Netsvr Tests">
             <file>./tests/NetBusForNetsvrSingleTest.php</file>
@@ -13,4 +13,9 @@
             <file>./tests/NetBusForNetsvrDistributedTest.php</file>
         </testsuite>
     </testsuites>
+    <coverage processUncoveredFiles="true">
+        <include>
+            <directory suffix=".php">./src</directory>
+        </include>
+    </coverage>
 </phpunit>
