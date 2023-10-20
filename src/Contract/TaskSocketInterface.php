@@ -26,4 +26,10 @@ interface TaskSocketInterface
     public function send(string $data): void;
 
     public function receive(): Router|false;
+
+    /**
+     * 做一次心跳检查，看看连接是否正常
+     * @return bool
+     */
+    public function checkLive(): bool;
 }

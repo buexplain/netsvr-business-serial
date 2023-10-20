@@ -160,6 +160,57 @@ class TaskSocket implements TaskSocketInterface
     }
 
     /**
+     * 发送数据
+     * @param string $message
+     * @return bool
+     */
+    protected function _send(string $message): bool
+    {
+        try {
+            $length = strlen($message);
+            while (true) {
+                $ret = socket_write($this->socket, $message, $length);
+                //发送失败，退出循环
+                if ($ret === false) {
+                    return false;
+                }
+                //发送成功，检查是否发送完毕
+                if ($ret === $length) {
+                    return true;
+                }
+                //没有发送完毕，遇到tcp短写，继续发送
+                $message = substr($message, $ret);
+                $length -= $ret;
+            }
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * 做一次心跳检查，看看连接是否正常
+     * @return bool
+     */
+    public function checkLive(): bool
+    {
+        try {
+            $message = pack('N', strlen(Constant::PING_MESSAGE)) . Constant::PING_MESSAGE;
+            $ret = $this->_send($message);
+            if ($ret) {
+                if ($this->_receive() === Constant::PONG_MESSAGE) {
+                    $this->lastUseTime = time();
+                    //成功接收到心跳
+                    return true;
+                }
+            }
+            return false;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * 发送数据，会重试
      * @param string $data
      * @return void
      * @throws TaskSocketSendException
@@ -172,49 +223,23 @@ class TaskSocket implements TaskSocketInterface
             //之所以设计这个空闲机制是因为：
             //连接被对端杀掉后，我方无感知，继续往socket写入数据，不会报错，这样就会导致待发送的数据丢失
             //其实对端是有返回TCP的RST标志的，我方收到该标志后应该发起重连，但是php的socket扩展不返回这个TCP的RST标志
-            $this->reconnect();
+            if ($this->checkLive() === false) {
+                $this->reconnect();
+            }
         }
         //打包数据
         $message = pack('N', strlen($data)) . $data;
         //开始发送数据
-        try {
-            $ret = socket_send($this->socket, $message, strlen($message), 0);
-        } catch (Throwable) {
-            $ret = false;
-        }
-        //判断发送结果
-        if ($ret !== false) {
-            //发送成功，更新socket对象的最后使用时间
-            $this->lastUseTime = time();
-            return;
-        }
-        //发送失败，重连一下
-        $this->reconnect();
-        //再次发送
-        try {
-            $length = strlen($message);
-            while (true) {
-                $ret = socket_write($this->socket, $message, $length);
-                //发送失败，退出循环
-                if ($ret === false) {
-                    break;
-                }
-                //发送成功，检查是否发送完毕
-                if ($ret === $length) {
-                    break;
-                }
-                //没有发送完毕，遇到tcp短写，继续发送
-                $message = substr($message, $ret);
-                $length -= $ret;
+        for ($i = 0; $i < 2; $i++) {
+            $ret = $this->_send($message);
+            //判断发送结果
+            if ($ret !== false) {
+                //发送成功，更新socket对象的最后使用时间
+                $this->lastUseTime = time();
+                return;
             }
-        } catch (Throwable) {
-            $ret = false;
-        }
-        //判断发送结果
-        if ($ret !== false) {
-            //发送成功，更新socket对象的最后使用时间
-            $this->lastUseTime = time();
-            return;
+            //发送失败，重连一下
+            $this->reconnect();
         }
         //发送失败，抛出异常
         $code = socket_last_error($this->socket);
@@ -233,10 +258,9 @@ class TaskSocket implements TaskSocketInterface
     }
 
     /**
-     * @return Router|false
-     * @throws Exception
+     * @return false|string
      */
-    public function receive(): Router|false
+    protected function _receive(): bool|string
     {
         //先读取包头长度，4个字节
         $packageLength = '';
@@ -257,6 +281,16 @@ class TaskSocket implements TaskSocketInterface
         if ($receiveRet === false || ($receiveRet === 0 && $packageBody === null) || $packageBody === '') {
             return false;
         }
+        return $packageBody;
+    }
+
+    /**
+     * @return Router|false
+     * @throws Exception
+     */
+    public function receive(): Router|false
+    {
+        $packageBody = $this->_receive();
         //读取到了心跳
         if ($packageBody === Constant::PONG_MESSAGE) {
             return false;
