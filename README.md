@@ -142,7 +142,7 @@ class NetBusServiceProvider extends ServiceProvider
                 $sockets = $this->app->get(TaskSocketMangerInterface::class)->getSockets();
                 //循环每个连接并发送心跳与接收心跳返回
                 foreach ($sockets as $socket) {
-                    $socket->checkLive();
+                    $socket->heartbeat();
                 }
             })->seconds($seconds)->immediate();
         }
