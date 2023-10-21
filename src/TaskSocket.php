@@ -228,7 +228,7 @@ class TaskSocket implements TaskSocketInterface
             }
         }
         //开始发送数据
-        for ($i = 0; $i < 2; $i++) {
+        for ($i = 2; $i > 0; $i--) {
             $ret = $this->_send($data);
             //判断发送结果
             if ($ret !== false) {
@@ -236,12 +236,16 @@ class TaskSocket implements TaskSocketInterface
                 $this->lastUseTime = time();
                 return;
             }
-            //发送失败，重连一下
-            $this->reconnect();
+            //发送失败
+            if ($i == 1) {
+                //重试到达次数限制，抛出异常
+                $code = socket_last_error($this->socket);
+                throw new TaskSocketSendException(socket_strerror($code), $code);
+            } else {
+                //重连一下，继续发送
+                $this->reconnect();
+            }
         }
-        //发送失败，抛出异常
-        $code = socket_last_error($this->socket);
-        throw new TaskSocketSendException(socket_strerror($code), $code);
     }
 
     public function __destruct()
