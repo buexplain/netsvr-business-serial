@@ -31,5 +31,5 @@ interface TaskSocketInterface
      * 做一次心跳检查，看看连接是否正常
      * @return bool
      */
-    public function checkLive(): bool;
+    public function heartbeat(): bool;
 }

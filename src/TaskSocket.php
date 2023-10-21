@@ -167,6 +167,7 @@ class TaskSocket implements TaskSocketInterface
     protected function _send(string $message): bool
     {
         try {
+            $message = pack('N', strlen($message)) . $message;
             $length = strlen($message);
             while (true) {
                 $ret = socket_write($this->socket, $message, $length);
@@ -191,11 +192,10 @@ class TaskSocket implements TaskSocketInterface
      * 做一次心跳检查，看看连接是否正常
      * @return bool
      */
-    public function checkLive(): bool
+    public function heartbeat(): bool
     {
         try {
-            $message = pack('N', strlen(Constant::PING_MESSAGE)) . Constant::PING_MESSAGE;
-            $ret = $this->_send($message);
+            $ret = $this->_send(Constant::PING_MESSAGE);
             if ($ret) {
                 if ($this->_receive() === Constant::PONG_MESSAGE) {
                     $this->lastUseTime = time();
@@ -223,15 +223,13 @@ class TaskSocket implements TaskSocketInterface
             //之所以设计这个空闲机制是因为：
             //连接被对端杀掉后，我方无感知，继续往socket写入数据，不会报错，这样就会导致待发送的数据丢失
             //其实对端是有返回TCP的RST标志的，我方收到该标志后应该发起重连，但是php的socket扩展不返回这个TCP的RST标志
-            if ($this->checkLive() === false) {
+            if ($this->heartbeat() === false) {
                 $this->reconnect();
             }
         }
-        //打包数据
-        $message = pack('N', strlen($data)) . $data;
         //开始发送数据
         for ($i = 0; $i < 2; $i++) {
-            $ret = $this->_send($message);
+            $ret = $this->_send($data);
             //判断发送结果
             if ($ret !== false) {
                 //发送成功，更新socket对象的最后使用时间
