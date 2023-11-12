@@ -19,13 +19,20 @@ declare(strict_types=1);
 
 namespace NetsvrBusiness\Contract;
 
-use Netsvr\Router;
-
 interface TaskSocketInterface
 {
+    /**
+     * 发送数据
+     * @param string $data
+     * @return void
+     */
     public function send(string $data): void;
 
-    public function receive(): Router|false;
+    /**
+     * 接收数据
+     * @return string|false
+     */
+    public function receive(): string|false;
 
     /**
      * 做一次心跳检查，看看连接是否正常

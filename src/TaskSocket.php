@@ -19,9 +19,7 @@ declare(strict_types=1);
 
 namespace NetsvrBusiness;
 
-use Exception;
 use Netsvr\Constant;
-use Netsvr\Router;
 use NetsvrBusiness\Contract\TaskSocketInterface;
 use NetsvrBusiness\Exception\TaskSocketSendException;
 use Throwable;
@@ -287,18 +285,15 @@ class TaskSocket implements TaskSocketInterface
     }
 
     /**
-     * @return Router|false
-     * @throws Exception
+     * @return string|false
      */
-    public function receive(): Router|false
+    public function receive(): string|false
     {
         $packageBody = $this->_receive();
         //读取到了心跳
         if ($packageBody === Constant::PONG_MESSAGE) {
             return false;
         }
-        $router = new Router();
-        $router->mergeFromString($packageBody);
-        return $router;
+        return $packageBody;
     }
 }

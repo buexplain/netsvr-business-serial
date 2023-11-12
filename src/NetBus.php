@@ -39,7 +39,6 @@ use Netsvr\LimitRespItem;
 use Netsvr\MetricsResp;
 use Netsvr\MetricsRespItem;
 use Netsvr\Multicast;
-use Netsvr\Router;
 use Netsvr\SingleCast;
 use Netsvr\SingleCastBulk;
 use Netsvr\TopicCountResp;
@@ -85,15 +84,13 @@ class NetBus
          * @var $socket TaskSocketInterface
          */
         $socket = Container::getInstance()->get(TaskSocketMangerInterface::class)->getSocket($serverId);
-        $router = new Router();
-        $router->setCmd(Cmd::ConnOpenCustomUniqIdToken);
-        $socket->send($router->serializeToString());
-        $router = $socket->receive();
-        if ($router === false) {
+        $socket->send(self::pack(Cmd::ConnOpenCustomUniqIdToken, ''));
+        $respData = $socket->receive();
+        if ($respData === false) {
             throw new ErrorException('call Cmd::ConnOpenCustomUniqIdToken failed because the connection to the netsvr was disconnected');
         }
         $resp = new ConnOpenCustomUniqIdTokenResp();
-        $resp->mergeFromString($router->getData());
+        $resp->mergeFromString(self::unpack($respData));
         return [
             'uniqId' => $resp->getUniqId(),
             'token' => $resp->getToken(),
@@ -109,10 +106,7 @@ class NetBus
      */
     public static function connInfoUpdate(ConnInfoUpdate $connInfoUpdate): void
     {
-        $router = new Router();
-        $router->setCmd(Cmd::ConnInfoUpdate);
-        $router->setData($connInfoUpdate->serializeToString());
-        self::sendToSocketByUniqId($connInfoUpdate->getUniqId(), $router);
+        self::sendToSocketByUniqId($connInfoUpdate->getUniqId(), self::pack(Cmd::ConnInfoUpdate, $connInfoUpdate->serializeToString()));
     }
 
     /**
@@ -124,10 +118,7 @@ class NetBus
      */
     public static function connInfoDelete(ConnInfoDelete $connInfoDelete): void
     {
-        $router = new Router();
-        $router->setCmd(Cmd::ConnInfoDelete);
-        $router->setData($connInfoDelete->serializeToString());
-        self::sendToSocketByUniqId($connInfoDelete->getUniqId(), $router);
+        self::sendToSocketByUniqId($connInfoDelete->getUniqId(), self::pack(Cmd::ConnInfoDelete, $connInfoDelete->serializeToString()));
     }
 
     /**
@@ -141,10 +132,7 @@ class NetBus
     {
         $broadcast = new Broadcast();
         $broadcast->setData($data);
-        $router = new Router();
-        $router->setCmd(Cmd::Broadcast);
-        $router->setData($broadcast->serializeToString());
-        self::sendToSockets($router);
+        self::sendToSockets(self::pack(Cmd::Broadcast, $broadcast->serializeToString()));
     }
 
     /**
@@ -163,18 +151,15 @@ class NetBus
             $multicast = new Multicast();
             $multicast->setUniqIds($uniqIds);
             $multicast->setData($data);
-            $router = (new Router())->setCmd(Cmd::Multicast)->setData($multicast->serializeToString());
-            self::sendToSocketByUniqId($uniqIds[0], $router);
+            self::sendToSocketByUniqId($uniqIds[0], self::pack(Cmd::Multicast, $multicast->serializeToString()));
             return;
         }
         //对uniqId按所属网关进行分组
         $serverGroup = self::uniqIdsGroupByServerId($uniqIds);
         //循环发送给各个网关
         foreach ($serverGroup as $serverId => $currentUniqIds) {
-            $multicast = (new Multicast())->setData($data)->setUniqIds($currentUniqIds)->serializeToString();
-            $router = (new Router())->setCmd(Cmd::Multicast);
-            $router->setData($multicast);
-            self::sendToSocketByServerId($serverId, $router);
+            $multicast = (new Multicast())->setData($data)->setUniqIds($currentUniqIds);
+            self::sendToSocketByServerId($serverId, self::pack(Cmd::Multicast, $multicast->serializeToString()));
         }
     }
 
@@ -191,10 +176,7 @@ class NetBus
         $singleCast = new SingleCast();
         $singleCast->setUniqId($uniqId);
         $singleCast->setData($data);
-        $router = new Router();
-        $router->setCmd(Cmd::SingleCast);
-        $router->setData($singleCast->serializeToString());
-        self::sendToSocketByUniqId($uniqId, $router);
+        self::sendToSocketByUniqId($uniqId, self::pack(Cmd::SingleCast, $singleCast->serializeToString()));
     }
 
     /**
@@ -226,10 +208,7 @@ class NetBus
                 $singleCastBulk->setUniqIds($uniqIds);
                 $singleCastBulk->setData(array_values($params));
             }
-            $router = new Router();
-            $router->setCmd(Cmd::SingleCastBulk);
-            $router->setData($singleCastBulk->serializeToString());
-            self::sendToSocketByUniqId($uniqIds[0], $router);
+            self::sendToSocketByUniqId($uniqIds[0], self::pack(Cmd::SingleCastBulk, $singleCastBulk->serializeToString()));
             return;
         }
         //网关是多机器部署，需要迭代每一个uniqId，并根据所在网关进行分组，然后再迭代每一个组，并把数据发送到对应网关
@@ -261,10 +240,7 @@ class NetBus
             $singleCastBulk = new SingleCastBulk();
             $singleCastBulk->setUniqIds($bulk['uniqIds']);
             $singleCastBulk->setData($bulk['data']);
-            $router = new Router();
-            $router->setCmd(Cmd::SingleCastBulk);
-            $router->setData($singleCastBulk->serializeToString());
-            self::sendToSocketByServerId($serverId, $router);
+            self::sendToSocketByServerId($serverId, self::pack(Cmd::SingleCastBulk, $singleCastBulk->serializeToString()));
         }
     }
 
@@ -283,10 +259,7 @@ class NetBus
         $topicSubscribe->setUniqId($uniqId);
         $topicSubscribe->setTopics((array)$topics);
         $topicSubscribe->setData($data);
-        $router = new Router();
-        $router->setCmd(Cmd::TopicSubscribe);
-        $router->setData($topicSubscribe->serializeToString());
-        self::sendToSocketByUniqId($topicSubscribe->getUniqId(), $router);
+        self::sendToSocketByUniqId($topicSubscribe->getUniqId(), self::pack(Cmd::TopicSubscribe, $topicSubscribe->serializeToString()));
     }
 
     /**
@@ -304,10 +277,7 @@ class NetBus
         $topicUnsubscribe->setUniqId($uniqId);
         $topicUnsubscribe->setTopics((array)$topics);
         $topicUnsubscribe->setData($data);
-        $router = new Router();
-        $router->setCmd(Cmd::TopicUnsubscribe);
-        $router->setData($topicUnsubscribe->serializeToString());
-        self::sendToSocketByUniqId($topicUnsubscribe->getUniqId(), $router);
+        self::sendToSocketByUniqId($topicUnsubscribe->getUniqId(), self::pack(Cmd::TopicUnsubscribe, $topicUnsubscribe->serializeToString()));
     }
 
     /**
@@ -323,10 +293,7 @@ class NetBus
         $topicDelete = new TopicDelete();
         $topicDelete->setTopics((array)$topics);
         $topicDelete->setData($data);
-        $router = new Router();
-        $router->setCmd(Cmd::TopicDelete);
-        $router->setData($topicDelete->serializeToString());
-        self::sendToSockets($router);
+        self::sendToSockets(self::pack(Cmd::TopicDelete, $topicDelete->serializeToString()));
     }
 
     /**
@@ -342,10 +309,7 @@ class NetBus
         $topicPublish = new TopicPublish();
         $topicPublish->setTopics((array)$topics);
         $topicPublish->setData($data);
-        $router = new Router();
-        $router->setCmd(Cmd::TopicPublish);
-        $router->setData($topicPublish->serializeToString());
-        self::sendToSockets($router);
+        self::sendToSockets(self::pack(Cmd::TopicPublish, $topicPublish->serializeToString()));
     }
 
     /**
@@ -373,10 +337,7 @@ class NetBus
             $topicPublishBulk->setTopics(array_keys($params));
             $topicPublishBulk->setData(array_values($params));
         }
-        $router = new Router();
-        $router->setCmd(Cmd::TopicPublishBulk);
-        $router->setData($topicPublishBulk->serializeToString());
-        self::sendToSockets($router);
+        self::sendToSockets(self::pack(Cmd::TopicPublishBulk, $topicPublishBulk->serializeToString()));
     }
 
     /**
@@ -394,8 +355,7 @@ class NetBus
             $forceOffline = new ForceOffline();
             $forceOffline->setUniqIds($uniqIds);
             $forceOffline->setData($data);
-            $router = (new Router())->setCmd(Cmd::ForceOffline)->setData($forceOffline->serializeToString());
-            self::sendToSocketByUniqId($uniqIds[0], $router);
+            self::sendToSocketByUniqId($uniqIds[0], self::pack(Cmd::ForceOffline, $forceOffline->serializeToString()));
             return;
         }
         $serverGroup = self::uniqIdsGroupByServerId($uniqIds);
@@ -403,8 +363,7 @@ class NetBus
             $forceOffline = new ForceOffline();
             $forceOffline->setUniqIds($currentUniqIds);
             $forceOffline->setData($data);
-            $router = (new Router())->setCmd(Cmd::ForceOffline)->setData($forceOffline->serializeToString());
-            self::sendToSocketByServerId($serverId, $router);
+            self::sendToSocketByServerId($serverId, self::pack(Cmd::ForceOffline, $forceOffline->serializeToString()));
         }
     }
 
@@ -425,8 +384,7 @@ class NetBus
             $forceOfflineGuest->setUniqIds($uniqIds);
             $forceOfflineGuest->setData($data);
             $forceOfflineGuest->setDelay($delay);
-            $router = (new Router())->setCmd(Cmd::ForceOfflineGuest)->setData($forceOfflineGuest->serializeToString());
-            self::sendToSocketByUniqId($uniqIds[0], $router);
+            self::sendToSocketByUniqId($uniqIds[0], self::pack(Cmd::ForceOfflineGuest, $forceOfflineGuest->serializeToString()));
             return;
         }
         $serverGroup = self::uniqIdsGroupByServerId($uniqIds);
@@ -435,8 +393,7 @@ class NetBus
             $forceOfflineGuest->setUniqIds($currentUniqIds);
             $forceOfflineGuest->setData($data);
             $forceOfflineGuest->setDelay($delay);
-            $router = (new Router())->setCmd(Cmd::ForceOfflineGuest)->setData($forceOfflineGuest->serializeToString());
-            self::sendToSocketByServerId($serverId, $router);
+            self::sendToSocketByServerId($serverId, self::pack(Cmd::ForceOfflineGuest, $forceOfflineGuest->serializeToString()));
         }
     }
 
@@ -458,15 +415,14 @@ class NetBus
             if (!$socket instanceof TaskSocketInterface) {
                 return [];
             }
-            $checkOnlineReq = (new CheckOnlineReq())->setUniqIds($uniqIds)->serializeToString();
-            $req = (new Router())->setCmd(Cmd::CheckOnline)->setData($checkOnlineReq)->serializeToString();
-            $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $checkOnlineReq = (new CheckOnlineReq())->setUniqIds($uniqIds);
+            $socket->send(self::pack(Cmd::CheckOnline, $checkOnlineReq->serializeToString()));
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::CheckOnline failed because the connection to the netsvr was disconnected');
             }
             $resp = new CheckOnlineResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             return self::repeatedFieldToArray($resp->getUniqIds());
         }
         //网关是多机器部署的，先对uniqId按所属网关进行分组
@@ -481,18 +437,16 @@ class NetBus
             if ($socket instanceof TaskSocketInterface) {
                 //构造请求参数
                 $checkOnlineReq = (new CheckOnlineReq())->setUniqIds($currentUniqIds)->serializeToString();
-                //构造路由
-                $req = (new Router())->setCmd(Cmd::CheckOnline)->setData($checkOnlineReq)->serializeToString();
                 //发送请求
-                $socket->send($req);
+                $socket->send(self::pack(Cmd::CheckOnline, $checkOnlineReq));
                 //接收响应
-                $router = $socket->receive();
-                if ($router === false) {
+                $respData = $socket->receive();
+                if ($respData === false) {
                     throw new ErrorException('call Cmd::CheckOnline failed because the connection to the netsvr was disconnected');
                 }
                 //解析响应
                 $resp = new CheckOnlineResp();
-                $resp->mergeFromString($router->getData());
+                $resp->mergeFromString(self::unpack($respData));
                 array_push($ret, ...self::repeatedFieldToArray($resp->getUniqIds()));
             }
         }
@@ -513,17 +467,17 @@ class NetBus
         if (empty($sockets)) {
             return [];
         }
-        $req = (new Router())->setCmd(Cmd::UniqIdList)->serializeToString();
+        $req = self::pack(Cmd::UniqIdList, '');
         //单机部署的网关，直接请求
         if (count($sockets) === 1) {
             $socket = $sockets[0];
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::UniqIdList failed because the connection to the netsvr was disconnected');
             }
             $resp = new UniqIdListResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             return [[
                 'serverId' => $resp->getServerId(),
                 'uniqIds' => self::repeatedFieldToArray($resp->getUniqIds()),
@@ -533,12 +487,12 @@ class NetBus
         $ret = [];
         foreach ($sockets as $socket) {
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::UniqIdList failed because the connection to the netsvr was disconnected');
             }
             $resp = new UniqIdListResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             $ret[] = [
                 'serverId' => $resp->getServerId(),
                 'uniqIds' => self::repeatedFieldToArray($resp->getUniqIds()),
@@ -561,17 +515,17 @@ class NetBus
         if (empty($sockets)) {
             return [];
         }
-        $req = (new Router())->setCmd(Cmd::UniqIdCount)->serializeToString();
+        $req = self::pack(Cmd::UniqIdCount, '');
         //网关是单体架构部署的，直接请求
         if (count($sockets) === 1) {
             $socket = $sockets[0];
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::UniqIdCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new UniqIdCountResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             return [[
                 'serverId' => $resp->getServerId(),
                 'count' => $resp->getCount(),
@@ -581,12 +535,12 @@ class NetBus
         $ret = [];
         foreach ($sockets as $socket) {
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::UniqIdCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new UniqIdCountResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             $ret[] = [
                 'serverId' => $resp->getServerId(),
                 'count' => $resp->getCount(),
@@ -609,17 +563,17 @@ class NetBus
         if (empty($sockets)) {
             return [];
         }
-        $req = (new Router())->setCmd(Cmd::TopicCount)->serializeToString();
+        $req = self::pack(Cmd::TopicCount, '');
         //直接请求单个网关
         if (count($sockets) === 1) {
             $socket = $sockets[0];
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::TopicCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicCountResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             return [[
                 'serverId' => $resp->getServerId(),
                 'count' => $resp->getCount(),
@@ -629,12 +583,12 @@ class NetBus
         $ret = [];
         foreach ($sockets as $socket) {
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::TopicCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicCountResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             $ret[] = [
                 'serverId' => $resp->getServerId(),
                 'count' => $resp->getCount(),
@@ -657,17 +611,17 @@ class NetBus
         if (empty($sockets)) {
             return [];
         }
-        $req = (new Router())->setCmd(Cmd::TopicList)->serializeToString();
+        $req = self::pack(Cmd::TopicList, '');
         //直接请求单个网关
         if (count($sockets) === 1) {
             $socket = $sockets[0];
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::TopicList failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicListResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             return [[
                 'serverId' => $resp->getServerId(),
                 'topics' => self::repeatedFieldToArray($resp->getTopics()),
@@ -677,12 +631,12 @@ class NetBus
         $ret = [];
         foreach ($sockets as $socket) {
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::TopicList failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicListResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             $ret[] = [
                 'serverId' => $resp->getServerId(),
                 'topics' => self::repeatedFieldToArray($resp->getTopics()),
@@ -706,17 +660,17 @@ class NetBus
             return [];
         }
         $topicUniqIdListReq = (new TopicUniqIdListReq())->setTopics((array)$topics)->serializeToString();
-        $req = (new Router())->setCmd(Cmd::TopicUniqIdList)->setData($topicUniqIdListReq)->serializeToString();
+        $req = self::pack(Cmd::TopicUniqIdList, $topicUniqIdListReq);
         //网关是单机部署的，直接请求
         if (count($sockets) === 1) {
             $socket = $sockets[0];
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::TopicUniqIdList failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicUniqIdListResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             $ret = [];
             foreach ($resp->getItems() as $topic => $uniqIds) {
                 /**
@@ -733,12 +687,12 @@ class NetBus
         $ret = [];
         foreach ($sockets as $socket) {
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::TopicUniqIdList failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicUniqIdListResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             foreach ($resp->getItems() as $topic => $uniqIds) {
                 /**
                  * @var $uniqIds TopicUniqIdListRespItem
@@ -772,16 +726,16 @@ class NetBus
             return [];
         }
         $topicUniqIdCountReq = (new TopicUniqIdCountReq())->setTopics((array)$topics)->setCountAll($allTopic);
-        $req = (new Router())->setCmd(Cmd::TopicUniqIdCount)->setData($topicUniqIdCountReq->serializeToString())->serializeToString();
+        $req = self::pack(Cmd::TopicUniqIdCount, $topicUniqIdCountReq->serializeToString());
         if (count($sockets) === 1) {
             $socket = $sockets[0];
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::TopicUniqIdCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicUniqIdCountResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             $ret = [];
             foreach ($resp->getItems() as $currentTopic => $count) {
                 $ret[] = [
@@ -794,12 +748,12 @@ class NetBus
         $ret = [];
         foreach ($sockets as $socket) {
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::TopicUniqIdCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicUniqIdCountResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             foreach ($resp->getItems() as $currentTopic => $count) {
                 if (!isset($ret[$currentTopic])) {
                     $ret[$currentTopic] = [
@@ -831,14 +785,14 @@ class NetBus
                 return [];
             }
             $connInfoReq = (new ConnInfoReq())->setUniqIds($uniqIds);
-            $req = (new Router())->setCmd(Cmd::ConnInfo)->setData($connInfoReq->serializeToString())->serializeToString();
+            $req = self::pack(Cmd::ConnInfo, $connInfoReq->serializeToString());
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::ConnInfo failed because the connection to the netsvr was disconnected');
             }
             $resp = new ConnInfoResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             $ret = [];
             foreach ($resp->getItems() as $currentUniqId => $info) {
                 /**
@@ -861,14 +815,14 @@ class NetBus
             $socket = Container::getInstance()->get(TaskSocketMangerInterface::class)->getSocket($serverId);
             if ($socket instanceof TaskSocketInterface) {
                 $connInfoReq = (new ConnInfoReq())->setUniqIds($currentUniqIds)->serializeToString();
-                $req = (new Router())->setCmd(Cmd::ConnInfo)->setData($connInfoReq)->serializeToString();
+                $req = self::pack(Cmd::ConnInfo, $connInfoReq);
                 $socket->send($req);
-                $router = $socket->receive();
-                if ($router === false) {
+                $respData = $socket->receive();
+                if ($respData === false) {
                     throw new ErrorException('call Cmd::ConnInfo failed because the connection to the netsvr was disconnected');
                 }
                 $resp = new ConnInfoResp();
-                $resp->mergeFromString($router->getData());
+                $resp->mergeFromString(self::unpack($respData));
                 foreach ($resp->getItems() as $currentUniqId => $info) {
                     /**
                      * @var $info ConnInfoRespItem
@@ -897,16 +851,16 @@ class NetBus
         if (empty($sockets)) {
             return [];
         }
-        $req = (new Router())->setCmd(Cmd::Metrics)->serializeToString();
+        $req = self::pack(Cmd::Metrics, '');
         $ret = [];
         foreach ($sockets as $socket) {
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::Metrics failed because the connection to the netsvr was disconnected');
             }
             $resp = new MetricsResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             foreach ($resp->getItems() as $metricsItem => $metricsValue) {
                 /**
                  * @var $metricsValue MetricsRespItem
@@ -967,16 +921,16 @@ class NetBus
         if ($limitReq === null) {
             $limitReq = new LimitReq();
         }
-        $req = (new Router())->setCmd(Cmd::Limit)->setData($limitReq->serializeToString())->serializeToString();
+        $req = self::pack(Cmd::Limit, $limitReq->serializeToString());
         $ret = [];
         foreach ($sockets as $socket) {
             $socket->send($req);
-            $router = $socket->receive();
-            if ($router === false) {
+            $respData = $socket->receive();
+            if ($respData === false) {
                 throw new ErrorException('call Cmd::Limit failed because the connection to the netsvr was disconnected');
             }
             $resp = new LimitResp();
-            $resp->mergeFromString($router->getData());
+            $resp->mergeFromString(self::unpack($respData));
             foreach ($resp->getItems() as $item) {
                 /**
                  * @var $item LimitRespItem
@@ -997,16 +951,15 @@ class NetBus
     }
 
     /**
-     * @param Router $router
+     * @param string $data
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    protected static function sendToSockets(Router $router): void
+    protected static function sendToSockets(string $data): void
     {
         $sockets = Container::getInstance()->get(TaskSocketMangerInterface::class)->getSockets();
         if (!empty($sockets)) {
-            $data = $router->serializeToString();
             foreach ($sockets as $socket) {
                 $socket->send($data);
             }
@@ -1015,31 +968,31 @@ class NetBus
 
     /**
      * @param string $uniqId
-     * @param Router $router
+     * @param string $data
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    protected static function sendToSocketByUniqId(string $uniqId, Router $router): void
+    protected static function sendToSocketByUniqId(string $uniqId, string $data): void
     {
         $socket = self::getSocketByUniqId($uniqId);
         if ($socket instanceof TaskSocketInterface) {
-            $socket->send($router->serializeToString());
+            $socket->send($data);
         }
     }
 
     /**
      * @param int $serverId
-     * @param Router $router
+     * @param string $data
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    protected static function sendToSocketByServerId(int $serverId, Router $router): void
+    protected static function sendToSocketByServerId(int $serverId, string $data): void
     {
         $socket = Container::getInstance()->get(TaskSocketMangerInterface::class)->getSocket($serverId);
         if (!empty($socket)) {
-            $socket->send($router->serializeToString());
+            $socket->send($data);
         }
     }
 
@@ -1092,5 +1045,26 @@ class NetBus
             $ret[] = $item;
         }
         return $ret;
+    }
+
+    /**
+     * 打包
+     * @param int $cmd
+     * @param string $data
+     * @return string
+     */
+    protected static function pack(int $cmd, string $data): string
+    {
+        return pack('N', $cmd) . $data;
+    }
+
+    /**
+     * 解包
+     * @param string $data
+     * @return string
+     */
+    protected static function unpack(string $data): string
+    {
+        return substr($data, 4);
     }
 }
