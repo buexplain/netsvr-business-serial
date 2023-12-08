@@ -3,7 +3,7 @@
 这是一个可以快速开发websocket单工通信业务的包，它必须在串行的php程序中工作，不能在协程中工作，它基于[https://github.com/buexplain/netsvr](https://github.com/buexplain/netsvr)
 进行工作。
 
-ps：如果你的项目是hyperf框架的，则可以使用这个包：[https://github.com/buexplain/netsvr-business](https://github.com/buexplain/netsvr-business)
+ps：如果你的项目是hyperf框架的，则可以使用这个包：[https://github.com/buexplain/netsvr-business-coroutine](https://github.com/buexplain/netsvr-business-coroutine)
 
 ### 名词解释，并不准确，请见谅：
 
@@ -306,7 +306,7 @@ $container->bind(\NetsvrBusiness\Contract\TaskSocketMangerInterface::class, func
 
 ## 如何跑本包的测试用例
 
-1. 下载[网关服务](https://github.com/buexplain/netsvr/releases)的`v2.1.0`版本及以上的程序包
+1. 下载[网关服务](https://github.com/buexplain/netsvr/releases)的`v3.0.0`版本及以上的程序包
 2. 修改配置文件`netsvr.toml`
    - `ConnOpenCustomUniqIdKey`改为`ConnOpenCustomUniqIdKey = "uniqId"`
    - `ServerId`改为`ServerId=0`
