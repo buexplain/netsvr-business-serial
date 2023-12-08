@@ -58,6 +58,7 @@ use Netsvr\UniqIdListResp;
 use NetsvrBusiness\Contract\ServerIdConvertInterface;
 use NetsvrBusiness\Contract\TaskSocketInterface;
 use NetsvrBusiness\Contract\TaskSocketMangerInterface;
+use NetsvrBusiness\Exception\SocketReceiveException;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\NotFoundExceptionInterface;
 use Throwable;
@@ -86,8 +87,8 @@ class NetBus
         $socket = Container::getInstance()->get(TaskSocketMangerInterface::class)->getSocket($serverId);
         $socket->send(self::pack(Cmd::ConnOpenCustomUniqIdToken, ''));
         $respData = $socket->receive();
-        if ($respData === false) {
-            throw new ErrorException('call Cmd::ConnOpenCustomUniqIdToken failed because the connection to the netsvr was disconnected');
+        if ($respData === '' || $respData === false) {
+            throw new SocketReceiveException('call Cmd::ConnOpenCustomUniqIdToken failed because the connection to the netsvr was disconnected');
         }
         $resp = new ConnOpenCustomUniqIdTokenResp();
         $resp->mergeFromString(self::unpack($respData));
@@ -418,8 +419,8 @@ class NetBus
             $checkOnlineReq = (new CheckOnlineReq())->setUniqIds($uniqIds);
             $socket->send(self::pack(Cmd::CheckOnline, $checkOnlineReq->serializeToString()));
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::CheckOnline failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::CheckOnline failed because the connection to the netsvr was disconnected');
             }
             $resp = new CheckOnlineResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -433,6 +434,9 @@ class NetBus
         //再的向每个网关请求
         $ret = [];
         foreach ($serverGroup as $serverId => $currentUniqIds) {
+            /**
+             * @var $socket TaskSocketInterface
+             */
             $socket = Container::getInstance()->get(TaskSocketMangerInterface::class)->getSocket($serverId);
             if ($socket instanceof TaskSocketInterface) {
                 //构造请求参数
@@ -441,8 +445,8 @@ class NetBus
                 $socket->send(self::pack(Cmd::CheckOnline, $checkOnlineReq));
                 //接收响应
                 $respData = $socket->receive();
-                if ($respData === false) {
-                    throw new ErrorException('call Cmd::CheckOnline failed because the connection to the netsvr was disconnected');
+                if ($respData === '' || $respData === false) {
+                    throw new SocketReceiveException('call Cmd::CheckOnline failed because the connection to the netsvr was disconnected');
                 }
                 //解析响应
                 $resp = new CheckOnlineResp();
@@ -473,8 +477,8 @@ class NetBus
             $socket = $sockets[0];
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::UniqIdList failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::UniqIdList failed because the connection to the netsvr was disconnected');
             }
             $resp = new UniqIdListResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -488,8 +492,8 @@ class NetBus
         foreach ($sockets as $socket) {
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::UniqIdList failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::UniqIdList failed because the connection to the netsvr was disconnected');
             }
             $resp = new UniqIdListResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -521,8 +525,8 @@ class NetBus
             $socket = $sockets[0];
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::UniqIdCount failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::UniqIdCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new UniqIdCountResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -536,8 +540,8 @@ class NetBus
         foreach ($sockets as $socket) {
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::UniqIdCount failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::UniqIdCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new UniqIdCountResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -569,8 +573,8 @@ class NetBus
             $socket = $sockets[0];
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::TopicCount failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::TopicCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicCountResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -584,8 +588,8 @@ class NetBus
         foreach ($sockets as $socket) {
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::TopicCount failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::TopicCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicCountResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -617,8 +621,8 @@ class NetBus
             $socket = $sockets[0];
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::TopicList failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::TopicList failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicListResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -632,8 +636,8 @@ class NetBus
         foreach ($sockets as $socket) {
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::TopicList failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::TopicList failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicListResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -666,8 +670,8 @@ class NetBus
             $socket = $sockets[0];
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::TopicUniqIdList failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::TopicUniqIdList failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicUniqIdListResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -688,8 +692,8 @@ class NetBus
         foreach ($sockets as $socket) {
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::TopicUniqIdList failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::TopicUniqIdList failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicUniqIdListResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -731,8 +735,8 @@ class NetBus
             $socket = $sockets[0];
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::TopicUniqIdCount failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::TopicUniqIdCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicUniqIdCountResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -749,8 +753,8 @@ class NetBus
         foreach ($sockets as $socket) {
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::TopicUniqIdCount failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::TopicUniqIdCount failed because the connection to the netsvr was disconnected');
             }
             $resp = new TopicUniqIdCountResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -788,8 +792,8 @@ class NetBus
             $req = self::pack(Cmd::ConnInfo, $connInfoReq->serializeToString());
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::ConnInfo failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::ConnInfo failed because the connection to the netsvr was disconnected');
             }
             $resp = new ConnInfoResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -812,14 +816,17 @@ class NetBus
         }
         $ret = [];
         foreach ($serverGroup as $serverId => $currentUniqIds) {
+            /**
+             * @var $socket TaskSocketInterface
+             */
             $socket = Container::getInstance()->get(TaskSocketMangerInterface::class)->getSocket($serverId);
             if ($socket instanceof TaskSocketInterface) {
                 $connInfoReq = (new ConnInfoReq())->setUniqIds($currentUniqIds)->serializeToString();
                 $req = self::pack(Cmd::ConnInfo, $connInfoReq);
                 $socket->send($req);
                 $respData = $socket->receive();
-                if ($respData === false) {
-                    throw new ErrorException('call Cmd::ConnInfo failed because the connection to the netsvr was disconnected');
+                if ($respData === '' || $respData === false) {
+                    throw new SocketReceiveException('call Cmd::ConnInfo failed because the connection to the netsvr was disconnected');
                 }
                 $resp = new ConnInfoResp();
                 $resp->mergeFromString(self::unpack($respData));
@@ -856,8 +863,8 @@ class NetBus
         foreach ($sockets as $socket) {
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::Metrics failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::Metrics failed because the connection to the netsvr was disconnected');
             }
             $resp = new MetricsResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -926,8 +933,8 @@ class NetBus
         foreach ($sockets as $socket) {
             $socket->send($req);
             $respData = $socket->receive();
-            if ($respData === false) {
-                throw new ErrorException('call Cmd::Limit failed because the connection to the netsvr was disconnected');
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::Limit failed because the connection to the netsvr was disconnected');
             }
             $resp = new LimitResp();
             $resp->mergeFromString(self::unpack($respData));
@@ -990,6 +997,9 @@ class NetBus
      */
     protected static function sendToSocketByServerId(int $serverId, string $data): void
     {
+        /**
+         * @var $socket TaskSocketInterface
+         */
         $socket = Container::getInstance()->get(TaskSocketMangerInterface::class)->getSocket($serverId);
         if (!empty($socket)) {
             $socket->send($data);

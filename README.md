@@ -105,7 +105,7 @@ class NetBusServiceProvider extends ServiceProvider
         $this->app->singleton(TaskSocketMangerInterface::class, function () {
             $taskSocketManger = new TaskSocketManger();
             foreach ($this->netsvrConfig as $config) {
-                $taskSocket = new TaskSocket($config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], $config['maxIdleTime']);
+                $taskSocket = new TaskSocket(new \Psr\Log\NullLogger(), $config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], $config['maxIdleTime']);
                 $taskSocketManger->addSocket($config['serverId'], $taskSocket);
             }
             return $taskSocketManger;
@@ -142,7 +142,9 @@ class NetBusServiceProvider extends ServiceProvider
                 $sockets = $this->app->get(TaskSocketMangerInterface::class)->getSockets();
                 //循环每个连接并发送心跳与接收心跳返回
                 foreach ($sockets as $socket) {
-                    $socket->heartbeat();
+                    if (!$socket->heartbeat()) {
+                        $socket->connect();
+                    }
                 }
             })->seconds($seconds)->immediate();
         }
@@ -227,7 +229,7 @@ class NetBusService extends Service
         $this->app->bind(TaskSocketMangerInterface::class, function () {
             $taskSocketManger = new TaskSocketManger();
             foreach ($this->netsvrConfig as $config) {
-                $taskSocket = new TaskSocket($config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], $config['maxIdleTime']);
+                $taskSocket = new TaskSocket(new \Psr\Log\NullLogger(), $config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], $config['maxIdleTime']);
                 $taskSocketManger->addSocket($config['serverId'], $taskSocket);
             }
             return $taskSocketManger;
@@ -295,7 +297,7 @@ $container->bind(\NetsvrBusiness\Contract\TaskSocketMangerInterface::class, func
     ];
     $taskSocketManger = new \NetsvrBusiness\TaskSocketManger();
     foreach ($netsvrConfig as $config) {
-        $taskSocket = new \NetsvrBusiness\TaskSocket($config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], $config['maxIdleTime']);
+        $taskSocket = new \NetsvrBusiness\TaskSocket(new \Psr\Log\NullLogger(), $config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], $config['maxIdleTime']);
         $taskSocketManger->addSocket($config['serverId'], $taskSocket);
     }
     return $taskSocketManger;

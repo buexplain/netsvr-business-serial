@@ -12,6 +12,9 @@
         <testsuite name="Distributed Netsvr Tests">
             <file>./tests/NetBusForNetsvrDistributedTest.php</file>
         </testsuite>
+        <testsuite name="Socket Tests">
+            <file>./tests/SocketTest.php</file>
+        </testsuite>
     </testsuites>
     <coverage processUncoveredFiles="true">
         <include>

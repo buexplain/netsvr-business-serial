@@ -17,13 +17,13 @@
 
 declare(strict_types=1);
 
-namespace NetsvrBusiness\Contract;
+namespace NetsvrBusiness\Exception;
 
-interface TaskSocketInterface extends SocketInterface
+use RuntimeException;
+
+/**
+ * 发送数据到网关的异常
+ */
+class SocketSendException extends RuntimeException
 {
-    /**
-     * 做一次心跳检查，看看连接是否正常
-     * @return bool
-     */
-    public function heartbeat(): bool;
 }

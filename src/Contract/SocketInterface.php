@@ -19,11 +19,49 @@ declare(strict_types=1);
 
 namespace NetsvrBusiness\Contract;
 
-interface TaskSocketInterface extends SocketInterface
+/**
+ * socket接口
+ */
+interface SocketInterface
 {
     /**
-     * 做一次心跳检查，看看连接是否正常
+     * @return string
+     */
+    public function getHost(): string;
+
+    /**
+     * @return int
+     */
+    public function getPort(): int;
+
+    /**
+     * 判断连接是否正常
      * @return bool
      */
-    public function heartbeat(): bool;
+    public function isConnected(): bool;
+
+    /**
+     * 关闭连接
+     * @return void
+     */
+    public function close(): void;
+
+    /**
+     * 发起连接
+     * @return bool
+     */
+    public function connect(): bool;
+
+    /**
+     * 发送数据
+     * @param string $data
+     * @return bool
+     */
+    public function send(string $data): bool;
+
+    /**
+     * 接收数据
+     * @return string|false
+     */
+    public function receive(): string|false;
 }

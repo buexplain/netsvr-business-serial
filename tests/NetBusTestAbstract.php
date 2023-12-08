@@ -35,6 +35,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Container\NotFoundExceptionInterface;
+use Psr\Log\NullLogger;
 use Throwable;
 use WebSocket\Client;
 
@@ -68,7 +69,7 @@ abstract class NetBusTestAbstract extends TestCase
         static::initNetBus();
     }
 
-    protected static function initNetBus()
+    protected static function initNetBus(): void
     {
         /**
          * @var $container ContainerInterface|Container
@@ -78,7 +79,7 @@ abstract class NetBusTestAbstract extends TestCase
         $taskSocketManger = new TaskSocketManger();
         foreach (static::$netsvrConfig as $config) {
             try {
-                $taskSocket = new TaskSocket($config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], 117);
+                $taskSocket = new TaskSocket(new NullLogger(), $config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], 117);
                 $taskSocketManger->addSocket($config['serverId'], $taskSocket);
                 $container->bind(TaskSocketInterface::class, $taskSocket);
             } catch (Throwable $throwable) {
@@ -271,7 +272,7 @@ abstract class NetBusTestAbstract extends TestCase
     {
         //连接到网关
         $this->resetWsClient();
-        $message = uniqid();
+        $message = uniqid() . str_repeat('a', (int)(65536 * 3.5));
         NetBus::broadcast($message);
         foreach (static::$wsClients as $client) {
             //接收每个连接的数据，并判断是否与之前发送的一致
@@ -290,7 +291,7 @@ abstract class NetBusTestAbstract extends TestCase
         //连接到网关
         $this->resetWsClient();
         $uniqIds = $this->getDefaultUniqIds();
-        $message = uniqid();
+        $message = uniqid() . str_repeat('a', (int)(65536 * 3.5));
         NetBus::multicast($uniqIds, $message);
         foreach (static::$wsClients as $client) {
             //接收每个连接的数据，并判断是否与之前发送的一致
@@ -311,7 +312,7 @@ abstract class NetBusTestAbstract extends TestCase
         $uniqIds = $this->getDefaultUniqIds();
         $message = [];
         foreach ($uniqIds as $uniqId) {
-            $message[$uniqId] = uniqid();
+            $message[$uniqId] = uniqid() . str_repeat('a', (int)(65536 * 3.5));
             //给每个连接单播数据过去
             NetBus::singleCast($uniqId, $message[$uniqId]);
         }
@@ -756,9 +757,14 @@ abstract class NetBusTestAbstract extends TestCase
     {
         //连接到网关
         $this->resetWsClient();
-        $topics = [uniqid(), uniqid(), uniqid(), uniqid()];
+        //订阅的总主题数量，之所以是这个主题数量，是因为我想顺手测试一下底层的socket对象在读取网关发来的超过65536大小的数据时是否正确
+        $totalTopic = (int)(65536 * 3.5 / 13);
+        $topics = [];
+        for ($i = 0; $i < $totalTopic; $i++) {
+            $topics[] = uniqid();
+        }
         $uniqIds = $this->getDefaultUniqIds();
-        //每个连接都订阅两个主题
+        //每个连接都订阅一波主题
         foreach ($uniqIds as $uniqId) {
             NetBus::topicSubscribe($uniqId, $topics);
         }

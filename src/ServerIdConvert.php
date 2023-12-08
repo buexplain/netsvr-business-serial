@@ -37,7 +37,7 @@ class ServerIdConvert implements ServerIdConvertInterface
      */
     public function single(string $uniqId): int
     {
-        return (int)@hexdec(substr($uniqId, 0, 2));
+        return (int)hexdec(substr($uniqId, 0, 2));
     }
 
     /**
@@ -49,7 +49,7 @@ class ServerIdConvert implements ServerIdConvertInterface
     {
         $ret = [];
         foreach ($uniqIds as $uniqId) {
-            $ret[$uniqId] = (int)@hexdec(substr($uniqId, 0, 2));
+            $ret[$uniqId] = (int)hexdec(substr($uniqId, 0, 2));
         }
         return $ret;
     }
