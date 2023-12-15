@@ -39,7 +39,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use Netsvr\Constant;
+use Laravel\Octane\Facades\Octane;
 use NetsvrBusiness\Container;
 use NetsvrBusiness\Contract\ServerIdConvertInterface;
 use NetsvrBusiness\Contract\TaskSocketMangerInterface;
@@ -48,6 +48,7 @@ use NetsvrBusiness\TaskSocket;
 use NetsvrBusiness\TaskSocketManger;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\NotFoundExceptionInterface;
+use Psr\Log\NullLogger;
 
 /**
  * composer包 buexplain/netsvr-business-serial 的初始化代码
@@ -62,30 +63,30 @@ class NetBusServiceProvider extends ServiceProvider
         //配置信息可以放到config文件夹下，我写这里是方便阅读
         //buexplain/netsvr-business-serial支持网关分布式部署在多台机器上
         $this->netsvrConfig = [
-            //第一个网关机器的信息
-            [
-                //网关的唯一id
-                'serverId' => 0,
-                //网关的worker服务器地址
-                'host' => '127.0.0.1',
-                //网关的worker服务器监听的端口
-                'port' => 6061,
-                //读取网关的worker服务器信息的超时时间，单位秒
-                'receiveTimeout' => 30,
-                //写入网关的worker服务器信息的超时时间，单位秒
-                'sendTimeout' => 30,
-                //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
-                'maxIdleTime' => 117,
+            'netsvr' => [
+                //第一个网关机器的信息
+                [
+                    //网关的唯一id
+                    'serverId' => 0,
+                    //网关的worker服务器地址
+                    'host' => '127.0.0.1',
+                    //网关的worker服务器监听的端口
+                    'port' => 6061,
+                    //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
+                    'maxIdleTime' => 117,
+                ],
+                //第二个网关机器信息
+                [
+                    'serverId' => 1,
+                    'host' => '127.0.0.1',
+                    'port' => 6071,
+                    'maxIdleTime' => 117,
+                ],
             ],
-            //第二个网关机器信息
-            [
-                'serverId' => 1,
-                'host' => '127.0.0.1',
-                'port' => 6071,
-                'receiveTimeout' => 30,
-                'sendTimeout' => 30,
-                'maxIdleTime' => 117,
-            ],
+            //读写数据超时，单位秒
+            'sendReceiveTimeout' => 5,
+            //连接到服务端超时，单位秒
+            'connectTimeout' => 5,
         ];
     }
 
@@ -105,7 +106,7 @@ class NetBusServiceProvider extends ServiceProvider
         $this->app->singleton(TaskSocketMangerInterface::class, function () {
             $taskSocketManger = new TaskSocketManger();
             foreach ($this->netsvrConfig as $config) {
-                $taskSocket = new TaskSocket(new \Psr\Log\NullLogger(), $config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], $config['maxIdleTime']);
+                $taskSocket = new TaskSocket(new NullLogger(), $config['host'], $config['port'], $this->netsvrConfig['sendReceiveTimeout'], $this->netsvrConfig['connectTimeout'], $config['maxIdleTime']);
                 $taskSocketManger->addSocket($config['serverId'], $taskSocket);
             }
             return $taskSocketManger;
@@ -123,7 +124,7 @@ class NetBusServiceProvider extends ServiceProvider
         //如果是swoole驱动的Octane，则可以定时心跳一下，保持连接的活跃
         if ($this->app->has(TaskSocketMangerInterface::class) && class_exists('\Laravel\Octane\Facades\Octane') && class_exists('\Swoole\Http\Server')) {
             //获取所有网关配置里面最小的maxIdleTime值
-            $maxIdleTime = min(array_column($this->netsvrConfig, 'maxIdleTime'));
+            $maxIdleTime = min(array_column($this->netsvrConfig['netsvr'], 'maxIdleTime'));
             $seconds = 0;
             //计算出定时的间隔时间，最好是比空闲时间小三秒就立刻进行心跳操作
             for ($i = 3; $i >= 1; $i--) {
@@ -137,7 +138,7 @@ class NetBusServiceProvider extends ServiceProvider
                 return;
             }
             //开启心跳间隔
-            \Laravel\Octane\Facades\Octane::tick('keepLiveForNetsvr', function () {
+            Octane::tick('keepLiveForNetsvr', function () {
                 //获取所有的网关socket连接
                 $sockets = $this->app->get(TaskSocketMangerInterface::class)->getSockets();
                 //循环每个连接并发送心跳与接收心跳返回
@@ -170,6 +171,7 @@ use NetsvrBusiness\TaskSocket;
 use NetsvrBusiness\TaskSocketManger;
 use think\App;
 use think\Service;
+use Psr\Log\NullLogger;
 
 /**
  * composer包 buexplain/netsvr-business-serial 的初始化代码
@@ -184,30 +186,30 @@ class NetBusService extends Service
         //配置信息可以放到config文件夹下，我写这里是方便阅读
         //buexplain/netsvr-business-serial支持网关分布式部署在多台机器上
         $this->netsvrConfig = [
-            //第一个网关机器的信息
-            [
-                //网关的唯一id
-                'serverId' => 0,
-                //网关的worker服务器地址
-                'host' => '127.0.0.1',
-                //网关的worker服务器监听的端口
-                'port' => 6061,
-                //读取网关的worker服务器信息的超时时间，单位秒
-                'receiveTimeout' => 30,
-                //写入网关的worker服务器信息的超时时间，单位秒
-                'sendTimeout' => 30,
-                //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
-                'maxIdleTime' => 117,
+            'netsvr' => [
+                //第一个网关机器的信息
+                [
+                    //网关的唯一id
+                    'serverId' => 0,
+                    //网关的worker服务器地址
+                    'host' => '127.0.0.1',
+                    //网关的worker服务器监听的端口
+                    'port' => 6061,
+                    //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
+                    'maxIdleTime' => 117,
+                ],
+                //第二个网关机器信息
+                [
+                    'serverId' => 1,
+                    'host' => '127.0.0.1',
+                    'port' => 6071,
+                    'maxIdleTime' => 117,
+                ],
             ],
-            //第二个网关机器信息
-            [
-                'serverId' => 1,
-                'host' => '127.0.0.1',
-                'port' => 6071,
-                'receiveTimeout' => 30,
-                'sendTimeout' => 30,
-                'maxIdleTime' => 117,
-            ],
+            //读写数据超时，单位秒
+            'sendReceiveTimeout' => 5,
+            //连接到服务端超时，单位秒
+            'connectTimeout' => 5,
         ];
     }
 
@@ -229,7 +231,7 @@ class NetBusService extends Service
         $this->app->bind(TaskSocketMangerInterface::class, function () {
             $taskSocketManger = new TaskSocketManger();
             foreach ($this->netsvrConfig as $config) {
-                $taskSocket = new TaskSocket(new \Psr\Log\NullLogger(), $config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], $config['maxIdleTime']);
+                $taskSocket = new TaskSocket(new NullLogger(), $config['host'], $config['port'], $this->netsvrConfig['sendReceiveTimeout'], $this->netsvrConfig['connectTimeout'], $config['maxIdleTime']);
                 $taskSocketManger->addSocket($config['serverId'], $taskSocket);
             }
             return $taskSocketManger;
@@ -270,34 +272,34 @@ $container->bind(\NetsvrBusiness\Contract\TaskSocketMangerInterface::class, func
     //配置信息可以放到config文件夹下，我写这里是方便阅读
     //buexplain/netsvr-business-serial支持网关分布式部署在多台机器上
     $netsvrConfig = [
-        //第一个网关机器的信息
-        [
-            //网关的唯一id
-            'serverId' => 0,
-            //网关的worker服务器地址
-            'host' => '127.0.0.1',
-            //网关的worker服务器监听的端口
-            'port' => 6061,
-            //读取网关的worker服务器信息的超时时间，单位秒
-            'receiveTimeout' => 30,
-            //写入网关的worker服务器信息的超时时间，单位秒
-            'sendTimeout' => 30,
-            //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
-            'maxIdleTime' => 117,
+        'netsvr' => [
+            //第一个网关机器的信息
+            [
+                //网关的唯一id
+                'serverId' => 0,
+                //网关的worker服务器地址
+                'host' => '127.0.0.1',
+                //网关的worker服务器监听的端口
+                'port' => 6061,
+                //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
+                'maxIdleTime' => 117,
+            ],
+            //第二个网关机器信息
+            [
+                'serverId' => 1,
+                'host' => '127.0.0.1',
+                'port' => 6071,
+                'maxIdleTime' => 117,
+            ],
         ],
-        //第二个网关机器信息
-        [
-            'serverId' => 1,
-            'host' => '127.0.0.1',
-            'port' => 6071,
-            'receiveTimeout' => 30,
-            'sendTimeout' => 30,
-            'maxIdleTime' => 117,
-        ],
+        //读写数据超时，单位秒
+        'sendReceiveTimeout' => 5,
+        //连接到服务端超时，单位秒
+        'connectTimeout' => 5,
     ];
     $taskSocketManger = new \NetsvrBusiness\TaskSocketManger();
     foreach ($netsvrConfig as $config) {
-        $taskSocket = new \NetsvrBusiness\TaskSocket(new \Psr\Log\NullLogger(), $config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], $config['maxIdleTime']);
+        $taskSocket = new \NetsvrBusiness\TaskSocket(new \Psr\Log\NullLogger(), $config['host'], $config['port'], $this->netsvrConfig['sendReceiveTimeout'], $this->netsvrConfig['connectTimeout'], $config['maxIdleTime']);
         $taskSocketManger->addSocket($config['serverId'], $taskSocket);
     }
     return $taskSocketManger;
@@ -308,10 +310,10 @@ $container->bind(\NetsvrBusiness\Contract\TaskSocketMangerInterface::class, func
 
 1. 下载[网关服务](https://github.com/buexplain/netsvr/releases)的`v3.0.0`版本及以上的程序包
 2. 修改配置文件`netsvr.toml`
-   - `ConnOpenCustomUniqIdKey`改为`ConnOpenCustomUniqIdKey = "uniqId"`
-   - `ServerId`改为`ServerId=0`
-   - `ConnOpenWorkerId`改为`ConnOpenWorkerId=0`
-   - `ConnCloseWorkerId`改为`ConnCloseWorkerId=0`
+    - `ConnOpenCustomUniqIdKey`改为`ConnOpenCustomUniqIdKey = "uniqId"`
+    - `ServerId`改为`ServerId=0`
+    - `ConnOpenWorkerId`改为`ConnOpenWorkerId=0`
+    - `ConnCloseWorkerId`改为`ConnCloseWorkerId=0`
 3. 执行命令：`netsvr-windows-amd64.bin -config configs/netsvr.toml`启动网关服务，注意我这个命令是windows系统的，其它系统的，自己替换成对应的网关服务程序包即可
 4. 完成以上步骤后，就启动好一个网关服务了，接下来再启动一个网关服务，目的是测试本包在网关服务多机部署下的正确性
 5. 复制一份`netsvr.toml`为`netsvr-607.toml`，并改动里面的`606`系列端口的为`607`系列端口，避免端口冲突；`ServerId`

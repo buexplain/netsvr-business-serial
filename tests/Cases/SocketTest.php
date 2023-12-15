@@ -17,7 +17,7 @@
 
 declare(strict_types=1);
 
-namespace NetsvrBusinessTest;
+namespace NetsvrBusinessTest\Cases;
 
 use Netsvr\Constant;
 use NetsvrBusiness\Contract\SocketInterface;

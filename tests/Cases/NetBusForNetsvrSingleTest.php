@@ -17,7 +17,7 @@
 
 declare(strict_types=1);
 
-namespace NetsvrBusinessTest;
+namespace NetsvrBusinessTest\Cases;
 
 /**
  * 测试网关单机部署的情况
@@ -25,14 +25,17 @@ namespace NetsvrBusinessTest;
 final class NetBusForNetsvrSingleTest extends NetBusTestAbstract
 {
     protected static array $netsvrConfig = [
-        [
-            'serverId' => 0,
-            'host' => '127.0.0.1',
-            'port' => 6061,
-            'receiveTimeout' => 30,
-            'sendTimeout' => 30,
-            //网关服务器必须支持自定义uniqId连接，即网关的netsvr.toml的配置项：ConnOpenCustomUniqIdKey，必须是：ConnOpenCustomUniqIdKey = "uniqId"
-            'ws' => 'ws://127.0.0.1:6060/netsvr?uniqId=',
+        'netsvr' => [
+            [
+                'serverId' => 0,
+                'host' => '127.0.0.1',
+                'port' => 6061,
+                'maxIdleTime' => 117,
+                //网关服务器必须支持自定义uniqId连接，即网关的netsvr.toml的配置项：ConnOpenCustomUniqIdKey，必须是：ConnOpenCustomUniqIdKey = "uniqId"
+                'ws' => 'ws://127.0.0.1:6060/netsvr?uniqId=',
+            ]
         ],
+        'sendReceiveTimeout' => 5,
+        'connectTimeout' => 5,
     ];
 }

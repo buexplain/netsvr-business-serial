@@ -17,7 +17,7 @@
 
 declare(strict_types=1);
 
-namespace NetsvrBusinessTest;
+namespace NetsvrBusinessTest\Cases;
 
 use ErrorException;
 use Netsvr\ConnInfoDelete;
@@ -77,9 +77,9 @@ abstract class NetBusTestAbstract extends TestCase
         $container = Container::getInstance();
         $container->bind(ServerIdConvertInterface::class, new ServerIdConvert());
         $taskSocketManger = new TaskSocketManger();
-        foreach (static::$netsvrConfig as $config) {
+        foreach (static::$netsvrConfig['netsvr'] as $config) {
             try {
-                $taskSocket = new TaskSocket(new NullLogger(), $config['host'], $config['port'], $config['sendTimeout'], $config['receiveTimeout'], 117);
+                $taskSocket = new TaskSocket(new NullLogger(), $config['host'], $config['port'], static::$netsvrConfig['sendReceiveTimeout'], static::$netsvrConfig['connectTimeout'], $config['maxIdleTime']);
                 $taskSocketManger->addSocket($config['serverId'], $taskSocket);
                 $container->bind(TaskSocketInterface::class, $taskSocket);
             } catch (Throwable $throwable) {
@@ -107,7 +107,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         static::$wsClients = [];
         static::$wsClientUniqIds = [];
-        foreach (static::$netsvrConfig as $config) {
+        foreach (static::$netsvrConfig['netsvr'] as $config) {
             for ($i = 0; $i < static::NETSVR_ONLINE_NUM; $i++) {
                 //这里采用自定义的uniqId连接到网关
                 //将每个网关的serverId转成16进制
@@ -175,7 +175,7 @@ abstract class NetBusTestAbstract extends TestCase
      */
     public function testConnOpenCustomUniqIdToken(): void
     {
-        foreach (static::$netsvrConfig as $config) {
+        foreach (static::$netsvrConfig['netsvr'] as $config) {
             $ret = NetBus::connOpenCustomUniqIdToken($config['serverId']);
             $this->assertNotEmpty($ret['uniqId'], "返回的连接所需uniqId不符合预期");
             $this->assertNotEmpty($ret['token'], "返回的连接所需token不符合预期");
@@ -858,7 +858,7 @@ abstract class NetBusTestAbstract extends TestCase
     {
         $ret = NetBus::metrics();
         $serverIds = array_unique(array_column($ret, 'serverId'));
-        $configServerIds = array_column(static::$netsvrConfig, 'serverId');
+        $configServerIds = array_column(static::$netsvrConfig['netsvr'], 'serverId');
         sort($serverIds);
         sort($configServerIds);
         $this->assertTrue($configServerIds == $serverIds);

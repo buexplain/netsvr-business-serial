@@ -23,10 +23,12 @@ use NetsvrBusiness\Contract\SocketInterface;
 use NetsvrBusiness\Exception\SocketConnectException;
 use NetsvrBusiness\Exception\SocketReceiveException;
 use NetsvrBusiness\Exception\SocketSendException;
-use Socket as BaseSocket;
-use Throwable;
 use Psr\Log\LoggerInterface;
+use Throwable;
 
+/**
+ *
+ */
 class Socket implements SocketInterface
 {
     /**
@@ -39,30 +41,27 @@ class Socket implements SocketInterface
      * @var string
      */
     protected string $host;
-
     /**
      * netsvr网关的worker服务器监听的端口
      * @var int
      */
     protected int $port;
-
     /***
-     * 发送数据超时，单位秒
+     * 读写数据超时，单位秒
      * @var int
      */
-    protected int $sendTimeout;
-
+    protected int $sendReceiveTimeout;
     /**
-     * 接收数据超时，单位秒
+     * 连接到服务端超时，单位秒
      * @var int
      */
-    protected int $receiveTimeout;
+    protected int $connectTimeout;
 
     /**
      * socket对象
-     * @var BaseSocket|null
+     * @var resource|null
      */
-    protected ?BaseSocket $socket = null;
+    protected mixed $socket = null;
 
     /**
      * @var bool 连接状态
@@ -70,44 +69,73 @@ class Socket implements SocketInterface
     protected bool $connected = false;
 
     /**
+     * @param LoggerInterface $logger
      * @param string $host netsvr网关的worker服务器监听的主机
      * @param int $port netsvr网关的worker服务器监听的端口
-     * @param int $sendTimeout 发送数据超时，单位秒
-     * @param int $receiveTimeout 接收数据超时，单位秒
+     * @param int $sendReceiveTimeout 读写数据超时，单位秒
+     * @param int $connectTimeout 连接到服务端超时，单位秒
      */
     public function __construct(
         LoggerInterface $logger,
         string          $host,
         int             $port,
-        int             $sendTimeout,
-        int             $receiveTimeout,
+        int             $sendReceiveTimeout,
+        int             $connectTimeout,
     )
     {
         $this->logger = $logger;
         $this->host = $host;
         $this->port = $port;
-        $this->sendTimeout = $sendTimeout;
-        $this->receiveTimeout = $receiveTimeout;
+        $this->sendReceiveTimeout = $sendReceiveTimeout;
+        $this->connectTimeout = $connectTimeout;
     }
 
+    /**
+     *
+     */
+    public function __destruct()
+    {
+        if (is_resource($this->socket)) {
+            try {
+                fclose($this->socket);
+            } catch (Throwable) {
+            }
+            $this->socket = null;
+        }
+    }
+
+    /**
+     * @return string
+     */
     public function getHost(): string
     {
         return $this->host;
     }
 
+    /**
+     * @return int
+     */
     public function getPort(): int
     {
         return $this->port;
     }
 
+    /**
+     * 判断连接是否正常
+     * @return bool
+     */
     public function isConnected(): bool
     {
         return $this->connected;
     }
 
+    /**
+     * 关闭连接
+     * @return void
+     */
     public function close(): void
     {
-        if ($this->socket instanceof BaseSocket) {
+        if ($this->connected) {
             $this->connected = false;
             $this->__destruct();
             $this->logger->info(sprintf('close connection %s:%s ok.',
@@ -118,65 +146,33 @@ class Socket implements SocketInterface
     }
 
     /**
-     *
+     * 发起连接
+     * @return bool
      */
-    public function __destruct()
-    {
-        if ($this->socket instanceof BaseSocket) {
-            try {
-                socket_close($this->socket);
-            } catch (Throwable) {
-            }
-            $this->socket = null;
-        }
-    }
-
     public function connect(): bool
     {
         try {
-            //销毁旧的连接
-            $this->__destruct();
-            //开始新的连接
-            //构造对象
-            $socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
+            $socket = @stream_socket_client(sprintf('tcp://%s:%d', $this->host, $this->port), $errno, $errMsg, $this->connectTimeout);
             if ($socket === false) {
-                $code = socket_last_error();
-                socket_clear_error();
-                throw new SocketConnectException(socket_strerror($code), $code);
+                throw new SocketConnectException($errMsg, $errno);
             }
-            //设置为阻塞模式
-            if (socket_set_block($socket) === false) {
-                $code = socket_last_error($socket);
-                socket_clear_error($socket);
-                throw new SocketConnectException(socket_strerror($code), $code);
+            if (!stream_set_timeout($socket, $this->sendReceiveTimeout)) {
+                throw new SocketConnectException('stream set timeout error', 0);
             }
-            //设置接收超时
-            if (socket_set_option($socket, SOL_SOCKET, SO_RCVTIMEO, array('sec' => $this->receiveTimeout, 'usec' => 0)) === false) {
-                $code = socket_last_error($socket);
-                socket_clear_error($socket);
-                throw new SocketConnectException(socket_strerror($code), $code);
+            if (!stream_set_blocking($socket, true)) {
+                throw new SocketConnectException('stream set blocking error', 0);
             }
-            //设置发送超时
-            if (socket_set_option($socket, SOL_SOCKET, SO_SNDTIMEO, array('sec' => $this->sendTimeout, 'usec' => 0)) === false) {
-                $code = socket_last_error($socket);
-                throw new SocketConnectException(socket_strerror($code), $code);
-            }
-            //发起连接
-            try {
-                if (socket_connect($socket, $this->host, $this->port) === false) {
-                    $code = socket_last_error($socket);
-                    socket_clear_error($socket);
-                    throw new SocketConnectException(socket_strerror($code), $code);
-                }
-            } catch (Throwable $throwable) {
-                throw new SocketConnectException($throwable->getMessage(), $throwable->getCode());
-            }
+            //先关闭旧的socket对象
+            $this->close();
             //存储到本对象的属性
             $this->socket = $socket;
             $this->connected = true;
+            $this->logger->info(sprintf('connect to %s:%s ok.',
+                $this->host,
+                $this->port,
+            ));
             return true;
         } catch (Throwable $throwable) {
-            $this->connected = false;
             $this->logger->error(sprintf('connect to %s:%s failed.%s%s',
                 $this->host,
                 $this->port,
@@ -188,7 +184,7 @@ class Socket implements SocketInterface
     }
 
     /**
-     * 发送一个包，失败返回false，成功返回true
+     * 发送数据
      * @param string $data
      * @return bool
      */
@@ -198,12 +194,17 @@ class Socket implements SocketInterface
             $data = pack('N', strlen($data)) . $data;
             $length = strlen($data);
             while (true) {
-                $ret = socket_write($this->socket, $data, $length);
+                $ret = fwrite($this->socket, $data, $length);
                 //发送失败，退出循环
                 if ($ret === false) {
-                    $code = socket_last_error($this->socket);
-                    socket_clear_error($this->socket);
-                    throw new SocketSendException(socket_strerror($code), $code);
+                    $error = error_get_last();
+                    if ($error) {
+                        $message = $error['message'];
+                        error_clear_last();
+                    } else {
+                        $message = 'netsvr server closed the connection';
+                    }
+                    throw new SocketSendException($message);
                 }
                 //发送成功，检查是否发送完毕
                 if ($ret === $length) {
@@ -232,21 +233,21 @@ class Socket implements SocketInterface
      */
     protected function _receive(int $length): string
     {
-        $bufferLength = socket_recv($this->socket, $buffer, $length, MSG_WAITALL);
-        if ($bufferLength === false || $buffer === null) {
-            $code = socket_last_error($this->socket);
-            socket_clear_error($this->socket);
-            if ($code === SOCKET_ETIMEDOUT) {
-                //Operation timed out
+        $buffer = fread($this->socket, $length);
+        if ($buffer === false || $buffer === '') {
+            $info = stream_get_meta_data($this->socket);
+            if ($info['timed_out']) {
                 //读取数据超时
                 return '';
             }
-            //其它错误
-            throw new SocketReceiveException(socket_strerror($code), $code);
-        }
-        //对端直接关闭了连接
-        if ($bufferLength === 0 && $buffer === '') {
-            throw new SocketReceiveException('netsvr server closed the connection', 0);
+            $error = error_get_last();
+            if ($error) {
+                $message = $error['message'];
+                error_clear_last();
+            } else {
+                $message = 'netsvr server closed the connection';
+            }
+            throw new SocketReceiveException($message);
         }
         return $buffer;
     }
@@ -289,7 +290,7 @@ class Socket implements SocketInterface
             $this->logger->error(sprintf('receive from %s:%s failed.%s%s',
                 $this->host,
                 $this->port,
-                PHP_EOL,
+                "\n",
                 self::formatExp($throwable)
             ));
             return false;
