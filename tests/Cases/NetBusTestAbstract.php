@@ -102,6 +102,9 @@ abstract class NetBusTestAbstract extends TestCase
         foreach (static::$wsClients as $client) {
             try {
                 $client->close();
+                usleep(20 * 1000);
+                $client->disconnect();
+                usleep(20 * 1000);
             } catch (Throwable) {
             }
         }
@@ -619,7 +622,7 @@ abstract class NetBusTestAbstract extends TestCase
         usleep(20 * 1000);
         //检查是否在线
         $ret = NetBus::checkOnline($uniqIds);
-        $this->assertEmpty($ret, var_export($ret, true));
+        $this->assertEmpty($ret, '强制关闭某几个连接的结果与预期不符');
     }
 
     /**
@@ -641,7 +644,7 @@ abstract class NetBusTestAbstract extends TestCase
         usleep(20 * 1000);
         //检查是否在线
         $ret = NetBus::checkOnline($uniqIds);
-        $this->assertEmpty($ret, var_export($ret, true));
+        $this->assertEmpty($ret, '强制关闭某几个空session值的连接的结果与预期不符');
         //再测试因为存在session值而关闭失败的情况
         $this->resetWsClient();
         $uniqIds = $this->getDefaultUniqIds();
