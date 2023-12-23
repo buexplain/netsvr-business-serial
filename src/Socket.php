@@ -32,6 +32,11 @@ use Throwable;
 class Socket implements SocketInterface
 {
     /**
+     * @var string 日志前缀
+     */
+    protected string $logPrefix = '';
+
+    /**
      * @var LoggerInterface 日志对象
      */
     protected LoggerInterface $logger;
@@ -69,6 +74,7 @@ class Socket implements SocketInterface
     protected bool $connected = false;
 
     /**
+     * @param string $logPrefix
      * @param LoggerInterface $logger
      * @param string $host netsvr网关的worker服务器监听的主机
      * @param int $port netsvr网关的worker服务器监听的端口
@@ -76,6 +82,7 @@ class Socket implements SocketInterface
      * @param int $connectTimeout 连接到服务端超时，单位秒
      */
     public function __construct(
+        string          $logPrefix,
         LoggerInterface $logger,
         string          $host,
         int             $port,
@@ -83,6 +90,7 @@ class Socket implements SocketInterface
         int             $connectTimeout,
     )
     {
+        $this->logPrefix = strlen($logPrefix) > 0 ? trim($logPrefix) . ' ' : '';
         $this->logger = $logger;
         $this->host = $host;
         $this->port = $port;
@@ -95,13 +103,7 @@ class Socket implements SocketInterface
      */
     public function __destruct()
     {
-        if (is_resource($this->socket)) {
-            try {
-                fclose($this->socket);
-            } catch (Throwable) {
-            }
-            $this->socket = null;
-        }
+        $this->close();
     }
 
     /**
@@ -135,13 +137,21 @@ class Socket implements SocketInterface
      */
     public function close(): void
     {
-        if ($this->connected) {
-            $this->connected = false;
-            $this->__destruct();
-            $this->logger->info(sprintf('close connection %s:%s ok.',
-                $this->host,
-                $this->port,
-            ));
+        if (!$this->connected) {
+            return;
+        }
+        $this->connected = false;
+        if (is_resource($this->socket)) {
+            try {
+                fclose($this->socket);
+            } catch (Throwable) {
+            } finally {
+                $this->socket = null;
+                $this->logger->info(sprintf($this->logPrefix . 'close connection %s:%s ok.',
+                    $this->host,
+                    $this->port,
+                ));
+            }
         }
     }
 
@@ -167,13 +177,13 @@ class Socket implements SocketInterface
             //存储到本对象的属性
             $this->socket = $socket;
             $this->connected = true;
-            $this->logger->info(sprintf('connect to %s:%s ok.',
+            $this->logger->info(sprintf($this->logPrefix . 'connect to %s:%s ok.',
                 $this->host,
                 $this->port,
             ));
             return true;
         } catch (Throwable $throwable) {
-            $this->logger->error(sprintf('connect to %s:%s failed.%s%s',
+            $this->logger->error(sprintf($this->logPrefix . 'connect to %s:%s failed.%s%s',
                 $this->host,
                 $this->port,
                 "\n",
@@ -216,7 +226,7 @@ class Socket implements SocketInterface
             }
         } catch (Throwable $throwable) {
             $this->connected = false;
-            $this->logger->error(sprintf('send to %s:%s failed.%s%s',
+            $this->logger->error(sprintf($this->logPrefix . 'send to %s:%s failed.%s%s',
                 $this->host,
                 $this->port,
                 "\n",
@@ -287,7 +297,7 @@ class Socket implements SocketInterface
             return $packageBody;
         } catch (Throwable $throwable) {
             $this->connected = false;
-            $this->logger->error(sprintf('receive from %s:%s failed.%s%s',
+            $this->logger->error(sprintf($this->logPrefix . 'receive from %s:%s failed.%s%s',
                 $this->host,
                 $this->port,
                 "\n",

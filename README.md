@@ -18,7 +18,7 @@ ps：如果你的项目是hyperf框架的，则可以使用这个包：[https://
    > composer require buexplain/netsvr-business-serial
    >
    > composer require google/protobuf
-3. 在框架初始化阶段，初始化本包
+3. 在框架初始化阶段，初始化本包，步骤如下：
     * 给容器`\NetsvrBusiness\Container::class`设置`\Psr\Container\ContainerInterface::class`接口的实例
     * 给`Psr\Container\ContainerInterface::class`
       接口的实例单例方式绑定接口：`\NetsvrBusiness\Contract\ServerIdConvertInterface::class`、`\NetsvrBusiness\Contract\TaskSocketMangerInterface::class`
@@ -30,25 +30,39 @@ ps：如果你的项目是hyperf框架的，则可以使用这个包：[https://
 
 ### Laravel框架
 
-只要在你的laravel项目安装下面这个服务提供者即可，另外代码里面的具体的配置信息需要你修改一下。
+只要在你的laravel项目安装下面这个服务提供者即可。
+其它框架初始化方式大同小异，不再赘述。
 
 ```php
 <?php
+/**
+ * Copyright 2023 buexplain@qq.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 declare(strict_types=1);
 
 namespace App\Providers;
 
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
-use Laravel\Octane\Facades\Octane;
 use NetsvrBusiness\Container;
 use NetsvrBusiness\Contract\ServerIdConvertInterface;
 use NetsvrBusiness\Contract\TaskSocketMangerInterface;
 use NetsvrBusiness\ServerIdConvert;
 use NetsvrBusiness\TaskSocket;
 use NetsvrBusiness\TaskSocketManger;
-use Psr\Container\ContainerExceptionInterface;
-use Psr\Container\NotFoundExceptionInterface;
-use Psr\Log\NullLogger;
 
 /**
  * composer包 buexplain/netsvr-business-serial 的初始化代码
@@ -105,8 +119,16 @@ class NetBusServiceProvider extends ServiceProvider
         //这个是管理与网关的worker服务器连接的socket的类
         $this->app->singleton(TaskSocketMangerInterface::class, function () {
             $taskSocketManger = new TaskSocketManger();
-            foreach ($this->netsvrConfig as $config) {
-                $taskSocket = new TaskSocket(new NullLogger(), $config['host'], $config['port'], $this->netsvrConfig['sendReceiveTimeout'], $this->netsvrConfig['connectTimeout'], $config['maxIdleTime']);
+            $logPrefix = sprintf('TaskSocket#%d', getmypid());
+            foreach ($this->netsvrConfig['netsvr'] as $config) {
+                $taskSocket = new TaskSocket(
+                    $logPrefix,
+                    Log::getLogger(),
+                    $config['host'],
+                    $config['port'],
+                    $this->netsvrConfig['sendReceiveTimeout'],
+                    $this->netsvrConfig['connectTimeout'],
+                    $config['maxIdleTime']);
                 $taskSocketManger->addSocket($config['serverId'], $taskSocket);
             }
             return $taskSocketManger;
@@ -116,194 +138,11 @@ class NetBusServiceProvider extends ServiceProvider
     /**
      * Bootstrap services.
      * @return void
-     * @throws ContainerExceptionInterface
-     * @throws NotFoundExceptionInterface
      */
     public function boot(): void
     {
-        //如果是swoole驱动的Octane，则可以定时心跳一下，保持连接的活跃
-        if ($this->app->has(TaskSocketMangerInterface::class) && class_exists('\Laravel\Octane\Facades\Octane') && class_exists('\Swoole\Http\Server')) {
-            //获取所有网关配置里面最小的maxIdleTime值
-            $maxIdleTime = min(array_column($this->netsvrConfig['netsvr'], 'maxIdleTime'));
-            $seconds = 0;
-            //计算出定时的间隔时间，最好是比空闲时间小三秒就立刻进行心跳操作
-            for ($i = 3; $i >= 1; $i--) {
-                if ($maxIdleTime - $i > 0) {
-                    $seconds = $maxIdleTime - $i;
-                    break;
-                }
-            }
-            //时间太短，不做心跳处理
-            if ($seconds <= 0) {
-                return;
-            }
-            //开启心跳间隔
-            Octane::tick('keepLiveForNetsvr', function () {
-                //获取所有的网关socket连接
-                $sockets = $this->app->get(TaskSocketMangerInterface::class)->getSockets();
-                //循环每个连接并发送心跳与接收心跳返回
-                foreach ($sockets as $socket) {
-                    if (!$socket->heartbeat()) {
-                        $socket->connect();
-                    }
-                }
-            })->seconds($seconds)->immediate();
-        }
     }
 }
-```
-
-### Thinkphp框架
-
-只要在你的thinkphp项目安装下面这个服务即可，另外代码里面的具体的配置信息需要你修改一下。
-
-```php
-<?php
-declare (strict_types=1);
-
-namespace app\service;
-
-use NetsvrBusiness\Container;
-use NetsvrBusiness\Contract\ServerIdConvertInterface;
-use NetsvrBusiness\Contract\TaskSocketMangerInterface;
-use NetsvrBusiness\ServerIdConvert;
-use NetsvrBusiness\TaskSocket;
-use NetsvrBusiness\TaskSocketManger;
-use think\App;
-use think\Service;
-use Psr\Log\NullLogger;
-
-/**
- * composer包 buexplain/netsvr-business-serial 的初始化代码
- */
-class NetBusService extends Service
-{
-    protected array $netsvrConfig = [];
-
-    public function __construct(App $app)
-    {
-        parent::__construct($app);
-        //配置信息可以放到config文件夹下，我写这里是方便阅读
-        //buexplain/netsvr-business-serial支持网关分布式部署在多台机器上
-        $this->netsvrConfig = [
-            'netsvr' => [
-                //第一个网关机器的信息
-                [
-                    //网关的唯一id
-                    'serverId' => 0,
-                    //网关的worker服务器地址
-                    'host' => '127.0.0.1',
-                    //网关的worker服务器监听的端口
-                    'port' => 6061,
-                    //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
-                    'maxIdleTime' => 117,
-                ],
-                //第二个网关机器信息
-                [
-                    'serverId' => 1,
-                    'host' => '127.0.0.1',
-                    'port' => 6071,
-                    'maxIdleTime' => 117,
-                ],
-            ],
-            //读写数据超时，单位秒
-            'sendReceiveTimeout' => 5,
-            //连接到服务端超时，单位秒
-            'connectTimeout' => 5,
-        ];
-    }
-
-    /**
-     * 注册服务
-     *
-     * @return void
-     */
-    public function register(): void
-    {
-        //替换默认的容器
-        Container::setInstance($this->app);
-        //这个是将网关下发的客户唯一id转为网关唯一id的类
-        //目前有默认实现是ServerIdConvert，具体实现的逻辑可以点击该类，进去看看注释，如果不符合业务需求，则需要自己实现接口ServerIdConvertInterface
-        $this->app->bind(ServerIdConvertInterface::class, function () {
-            return new ServerIdConvert();
-        });
-        //这个是管理与网关的worker服务器连接的socket的类
-        $this->app->bind(TaskSocketMangerInterface::class, function () {
-            $taskSocketManger = new TaskSocketManger();
-            foreach ($this->netsvrConfig as $config) {
-                $taskSocket = new TaskSocket(new NullLogger(), $config['host'], $config['port'], $this->netsvrConfig['sendReceiveTimeout'], $this->netsvrConfig['connectTimeout'], $config['maxIdleTime']);
-                $taskSocketManger->addSocket($config['serverId'], $taskSocket);
-            }
-            return $taskSocketManger;
-        });
-    }
-
-    /**
-     * 执行服务
-     *
-     * @return void
-     */
-    public function boot(): void
-    {
-        //
-    }
-}
-```
-
-### 无`\Psr\Container\ContainerInterface`容器的框架
-
-其实任意框架都可以用下面的代码，在框架初始化阶段，对本包进行初始化，只是有`\Psr\Container\ContainerInterface`
-容器的框架，我们就尽量使用框架本身的容器来初始化。
-比如yii2，它就是一个无`\Psr\Container\ContainerInterface`容器的框架，则可以在它的配置文件的`bootstrap`项上加入一个闭包，闭包的具体代码就是：
-
-```php
-/**
- * 因为框架没有容器，所以我们直接使用本包提供的容器
- * @var $container \NetsvrBusiness\Container
- */
-$container = \NetsvrBusiness\Container::getInstance();
-//这个是将网关下发的客户唯一id转为网关唯一id的类
-//目前有默认实现是ServerIdConvert，具体实现的逻辑可以点击该类，进去看看注释，如果不符合业务需求，则需要自己实现接口ServerIdConvertInterface
-$container->bind(\NetsvrBusiness\Contract\ServerIdConvertInterface::class, function () {
-    return new \NetsvrBusiness\ServerIdConvert();
-});
-//这个是管理与网关的worker服务器连接的socket的类
-$container->bind(\NetsvrBusiness\Contract\TaskSocketMangerInterface::class, function () {
-    //配置信息可以放到config文件夹下，我写这里是方便阅读
-    //buexplain/netsvr-business-serial支持网关分布式部署在多台机器上
-    $netsvrConfig = [
-        'netsvr' => [
-            //第一个网关机器的信息
-            [
-                //网关的唯一id
-                'serverId' => 0,
-                //网关的worker服务器地址
-                'host' => '127.0.0.1',
-                //网关的worker服务器监听的端口
-                'port' => 6061,
-                //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
-                'maxIdleTime' => 117,
-            ],
-            //第二个网关机器信息
-            [
-                'serverId' => 1,
-                'host' => '127.0.0.1',
-                'port' => 6071,
-                'maxIdleTime' => 117,
-            ],
-        ],
-        //读写数据超时，单位秒
-        'sendReceiveTimeout' => 5,
-        //连接到服务端超时，单位秒
-        'connectTimeout' => 5,
-    ];
-    $taskSocketManger = new \NetsvrBusiness\TaskSocketManger();
-    foreach ($netsvrConfig as $config) {
-        $taskSocket = new \NetsvrBusiness\TaskSocket(new \Psr\Log\NullLogger(), $config['host'], $config['port'], $this->netsvrConfig['sendReceiveTimeout'], $this->netsvrConfig['connectTimeout'], $config['maxIdleTime']);
-        $taskSocketManger->addSocket($config['serverId'], $taskSocket);
-    }
-    return $taskSocketManger;
-});
 ```
 
 ## 如何跑本包的测试用例

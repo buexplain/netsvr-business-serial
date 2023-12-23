@@ -29,7 +29,7 @@ class SocketTest extends TestCase
 {
     protected static function getSocket(): SocketInterface
     {
-        return new Socket(new NullLogger(), '127.0.0.1', 6061, 1, 1);
+        return new Socket(sprintf('TaskSocket#%d', getmypid()), new NullLogger(), '127.0.0.1', 6061, 1, 1);
     }
 
     /**

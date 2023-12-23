@@ -51,6 +51,7 @@ class TaskSocket extends Socket implements TaskSocketInterface
      * @param int $connectTimeout 连接到服务端超时，单位秒
      */
     public function __construct(
+        string          $logPrefix,
         LoggerInterface $logger,
         string          $host,
         int             $port,
@@ -59,7 +60,7 @@ class TaskSocket extends Socket implements TaskSocketInterface
         int             $maxIdleTime,
     )
     {
-        parent::__construct($logger, $host, $port, $sendReceiveTimeout, $connectTimeout);
+        parent::__construct($logPrefix, $logger, $host, $port, $sendReceiveTimeout, $connectTimeout);
         $this->maxIdleTime = $maxIdleTime;
     }
 
@@ -75,6 +76,22 @@ class TaskSocket extends Socket implements TaskSocketInterface
         $ret = parent::send($data);
         if ($ret) {
             $this->lastUseTime = time();
+        } else {
+            $this->lastUseTime = 0;
+        }
+        return $ret;
+    }
+
+    /**
+     * @return bool
+     */
+    public function connect(): bool
+    {
+        $ret = parent::connect();
+        if ($ret) {
+            $this->lastUseTime = time();
+        } else {
+            $this->lastUseTime = 0;
         }
         return $ret;
     }
@@ -85,8 +102,7 @@ class TaskSocket extends Socket implements TaskSocketInterface
      */
     public function heartbeat(): bool
     {
-        if (parent::send(Constant::PING_MESSAGE) && parent::receive() === Constant::PONG_MESSAGE) {
-            $this->lastUseTime = time();
+        if (self::send(Constant::PING_MESSAGE) && parent::receive() === Constant::PONG_MESSAGE) {
             //成功接收到心跳
             return true;
         }
