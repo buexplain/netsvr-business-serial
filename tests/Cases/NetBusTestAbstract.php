@@ -118,8 +118,7 @@ abstract class NetBusTestAbstract extends TestCase
         static::$wsClientUniqIds = [];
         foreach (static::getNetsvrConfig()['netsvr'] as $config) {
             for ($i = 0; $i < static::NETSVR_ONLINE_NUM; $i++) {
-                //simplex=yes 表示网关的连接是单工的，详细参见：tests/Auxiliary/callback.go
-                $client = new Client($config["ws"] . '?simplex=yes');
+                $client = new Client($config["ws"]);
                 $uniqId = $client->receive()->getContent();
                 static::$wsClientUniqIds[$config['workerAddr']][] = $uniqId;
                 static::$wsClients[$uniqId] = $client;
