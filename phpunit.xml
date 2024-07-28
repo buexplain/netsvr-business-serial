@@ -14,7 +14,6 @@
             <file>./tests/Cases/SocketTest.php</file>
         </testsuite>
     </testsuites>
-    <coverage/>
     <source>
         <include>
             <directory>./src</directory>

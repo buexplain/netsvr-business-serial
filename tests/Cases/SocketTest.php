@@ -19,7 +19,6 @@ declare(strict_types=1);
 
 namespace NetsvrBusinessTest\Cases;
 
-use Netsvr\Constant;
 use NetsvrBusiness\Contract\SocketInterface;
 use NetsvrBusiness\Socket;
 use PHPUnit\Framework\TestCase;
@@ -29,7 +28,7 @@ class SocketTest extends TestCase
 {
     protected static function getSocket(): SocketInterface
     {
-        return new Socket(sprintf('TaskSocket#%d', getmypid()), new NullLogger(), '127.0.0.1', 6061, 1, 1);
+        return new Socket(sprintf('TaskSocket#%d', getmypid()), new NullLogger(), '127.0.0.1:6071', 5, 5);
     }
 
     /**
@@ -50,21 +49,9 @@ class SocketTest extends TestCase
     public function testSend()
     {
         $socket = $this->getSocket();
-        $this->assertFalse($socket->send(Constant::PING_MESSAGE));
+        $this->assertFalse($socket->send(NetBusTestAbstract::WORKER_HEARTBEAT_MESSAGE));
         $socket->connect();
-        $this->assertTrue($socket->send(Constant::PING_MESSAGE));
-    }
-
-    /**
-     * composer test -- --filter=testReceive
-     * @return void
-     */
-    public function testReceive()
-    {
-        $socket = $this->getSocket();
-        $socket->connect();
-        $socket->send(Constant::PING_MESSAGE);
-        $this->assertTrue($socket->receive() === Constant::PONG_MESSAGE);
+        $this->assertTrue($socket->send(NetBusTestAbstract::WORKER_HEARTBEAT_MESSAGE));
     }
 
     /**

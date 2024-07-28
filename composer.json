@@ -15,15 +15,18 @@
   ],
   "require": {
     "php": ">=8.0",
-    "buexplain/netsvr-protocol-php": "^2.0.1",
+    "buexplain/netsvr-protocol-php": "^3.0.0",
     "psr/container": "^1.0|^2.0",
-    "psr/log": "^3.0"
+    "psr/log": "^2.0|^3.0"
   },
   "minimum-stability": "stable",
   "autoload": {
     "psr-4": {
       "NetsvrBusiness\\": "src/"
-    }
+    },
+    "files": [
+      "src/Functions.php"
+    ]
   },
   "autoload-dev": {
     "psr-4": {
@@ -33,7 +36,7 @@
   "require-dev": {
     "google/protobuf": "^3.22",
     "phpunit/phpunit": "^10.0",
-    "phrity/websocket": "^1.7"
+    "phrity/websocket": "^v3.0"
   },
   "scripts": {
     "test": "phpunit --configuration phpunit.xml --log-events-verbose-text phpunit.log"

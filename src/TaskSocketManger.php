@@ -33,22 +33,21 @@ class TaskSocketManger implements TaskSocketMangerInterface
     protected array $sockets = [];
 
     /**
-     * @param int $serverId
      * @param TaskSocketInterface $socket
      * @return void
      */
-    public function addSocket(int $serverId, TaskSocketInterface $socket): void
+    public function addSocket(TaskSocketInterface $socket): void
     {
-        $this->sockets[$serverId] = $socket;
+        $this->sockets[workerAddrConvertToHex($socket->getWorkerAddr())] = $socket;
     }
 
     /**
-     * @param int $serverId
+     * @param string $workerAddrAsHex
      * @return TaskSocketInterface|null
      */
-    public function getSocket(int $serverId): ?TaskSocketInterface
+    public function getSocket(string $workerAddrAsHex): ?TaskSocketInterface
     {
-        return $this->sockets[$serverId] ?? null;
+        return $this->sockets[$workerAddrAsHex] ?? null;
     }
 
     /**

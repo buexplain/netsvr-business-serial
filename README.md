@@ -19,12 +19,10 @@ ps：如果你的项目是hyperf框架的，则可以使用这个包：[https://
    >
    > composer require google/protobuf
 3. 在框架初始化阶段，初始化本包，步骤如下：
-    * 给容器`\NetsvrBusiness\Container::class`设置`\Psr\Container\ContainerInterface::class`接口的实例
-    * 给`Psr\Container\ContainerInterface::class`
-      接口的实例单例方式绑定接口：`\NetsvrBusiness\Contract\ServerIdConvertInterface::class`、`\NetsvrBusiness\Contract\TaskSocketMangerInterface::class`
-      的实例
+   * 设置`\NetsvrBusiness\Container::class`的`\Psr\Container\ContainerInterface::class`接口的实例
+   * 绑定`\NetsvrBusiness\Contract\TaskSocketMangerInterface::class`的单例实现
 4. 完成以上步骤后，即可在你的业务代码中使用`\NetsvrBusiness\NetBus::class`
-   的静态方法与网关交互，示例：`\NetsvrBusiness\NetBus::broadcast("广播给所有的网关的在线用户一条消息");`
+   的静态方法与网关交互，示例：`\NetsvrBusiness\NetBus::broadcast("将消息通过广播的方式给到全体在线人员");`
 
 ## 如何在框架初始化阶段，初始化本包
 
@@ -58,9 +56,7 @@ namespace App\Providers;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use NetsvrBusiness\Container;
-use NetsvrBusiness\Contract\ServerIdConvertInterface;
 use NetsvrBusiness\Contract\TaskSocketMangerInterface;
-use NetsvrBusiness\ServerIdConvert;
 use NetsvrBusiness\TaskSocket;
 use NetsvrBusiness\TaskSocketManger;
 
@@ -75,28 +71,24 @@ class NetBusServiceProvider extends ServiceProvider
     {
         parent::__construct($app);
         //配置信息可以放到config文件夹下，我写这里是方便阅读
-        //buexplain/netsvr-business-serial支持网关分布式部署在多台机器上
+        //buexplain/netsvr-business-serial包支持网关分布式部署在多台机器上，并与之交互
         $this->netsvrConfig = [
             'netsvr' => [
-                //第一个网关机器的信息
+                //第一台机器的网关的worker服务器的信息
                 [
-                    //网关的唯一id
-                    'serverId' => 0,
                     //网关的worker服务器地址
-                    'host' => '127.0.0.1',
-                    //网关的worker服务器监听的端口
-                    'port' => 6061,
+                    'workerAddr' => '127.0.0.1:6071',
                     //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
                     'maxIdleTime' => 117,
                 ],
-                //第二个网关机器信息
+                //第二台机器的网关的worker服务器的信息
                 [
-                    'serverId' => 1,
-                    'host' => '127.0.0.1',
-                    'port' => 6071,
+                    'workerAddr' => '127.0.0.1:6081',
                     'maxIdleTime' => 117,
                 ],
             ],
+            //向网关的worker服务器发送的心跳消息，这个字符串与网关的worker服务器的配置要一致
+            'workerHeartbeatMessage' => '~3yPvmnzu38NZv~',
             //读写数据超时，单位秒
             'sendReceiveTimeout' => 5,
             //连接到服务端超时，单位秒
@@ -111,11 +103,6 @@ class NetBusServiceProvider extends ServiceProvider
     {
         //替换默认的容器
         Container::setInstance($this->app);
-        //这个是将网关下发的客户唯一id转为网关唯一id的类
-        //目前有默认实现是ServerIdConvert，具体实现的逻辑可以点击该类，进去看看注释，如果不符合业务需求，则需要自己实现接口ServerIdConvertInterface
-        $this->app->singleton(ServerIdConvertInterface::class, function () {
-            return new ServerIdConvert();
-        });
         //这个是管理与网关的worker服务器连接的socket的类
         $this->app->singleton(TaskSocketMangerInterface::class, function () {
             $taskSocketManger = new TaskSocketManger();
@@ -123,13 +110,13 @@ class NetBusServiceProvider extends ServiceProvider
             foreach ($this->netsvrConfig['netsvr'] as $config) {
                 $taskSocket = new TaskSocket(
                     $logPrefix,
-                    Log::getLogger(),
-                    $config['host'],
-                    $config['port'],
+                    Log::getFacadeRoot(),
+                    $config['workerAddr'],
+                    $this->netsvrConfig['workerHeartbeatMessage'],
                     $this->netsvrConfig['sendReceiveTimeout'],
                     $this->netsvrConfig['connectTimeout'],
                     $config['maxIdleTime']);
-                $taskSocketManger->addSocket($config['serverId'], $taskSocket);
+                $taskSocketManger->addSocket($taskSocket);
             }
             return $taskSocketManger;
         });
@@ -144,20 +131,3 @@ class NetBusServiceProvider extends ServiceProvider
     }
 }
 ```
-
-## 如何跑本包的测试用例
-
-1. 下载[网关服务](https://github.com/buexplain/netsvr/releases)的`v3.0.0`版本及以上的程序包
-2. 修改配置文件`netsvr.toml`
-    - `ConnOpenCustomUniqIdKey`改为`ConnOpenCustomUniqIdKey = "uniqId"`
-    - `ServerId`改为`ServerId=0`
-    - `ConnOpenWorkerId`改为`ConnOpenWorkerId=0`
-    - `ConnCloseWorkerId`改为`ConnCloseWorkerId=0`
-3. 执行命令：`netsvr-windows-amd64.bin -config configs/netsvr.toml`启动网关服务，注意我这个命令是windows系统的，其它系统的，自己替换成对应的网关服务程序包即可
-4. 完成以上步骤后，就启动好一个网关服务了，接下来再启动一个网关服务，目的是测试本包在网关服务多机部署下的正确性
-5. 复制一份`netsvr.toml`为`netsvr-607.toml`，并改动里面的`606`系列端口的为`607`系列端口，避免端口冲突；`ServerId`
-   项改为`ServerId=1`，避免网关唯一id冲突
-6. 执行命令：`netsvr-windows-amd64.bin -config configs/netsvr-607.toml`
-   启动第二个网关服务，注意我这个命令是windows系统的，其它系统的，自己替换成对应的网关服务程序包即可
-7. 完成以上步骤后，两个网关服务启动完毕，算是准备好了网关这块的环境
-8. 执行本包的测试命令：`composer test`，等待一段时间，即可看到测试结果

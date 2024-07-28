@@ -24,27 +24,25 @@ namespace NetsvrBusinessTest\Cases;
  */
 final class NetBusForNetsvrDistributedTest extends NetBusTestAbstract
 {
-    protected static array $netsvrConfig = [
-        'netsvr' => [
-            [
-                'serverId' => 0,
-                'host' => '127.0.0.1',
-                'port' => 6061,
-                'maxIdleTime' => 117,
-                //网关服务器必须支持自定义uniqId连接，即网关的netsvr.toml的配置项：ConnOpenCustomUniqIdKey，必须是：ConnOpenCustomUniqIdKey = "uniqId"
-                'ws' => 'ws://127.0.0.1:6060/netsvr?uniqId=',
+    protected static function getNetsvrConfig(): array
+    {
+        return [
+            'netsvr' => [
+                [
+                    'workerAddr' => '127.0.0.1:6071',
+                    'maxIdleTime' => 117,
+                    'ws' => 'ws://127.0.0.1:6070/netsvr',
+                    'workerHeartbeatMessage' => self::WORKER_HEARTBEAT_MESSAGE,
+                ],
+                [
+                    'workerAddr' => '127.0.0.1:6081',
+                    'maxIdleTime' => 117,
+                    'ws' => 'ws://127.0.0.1:6080/netsvr',
+                    'workerHeartbeatMessage' => self::WORKER_HEARTBEAT_MESSAGE,
+                ],
             ],
-            [
-                'serverId' => 1,
-                'host' => '127.0.0.1',
-                'port' => 6071,
-                'maxIdleTime' => 117,
-                //网关服务器必须支持自定义uniqId连接，即网关的netsvr.toml的配置项：ConnOpenCustomUniqIdKey，必须是：ConnOpenCustomUniqIdKey = "uniqId"
-                'ws' => 'ws://127.0.0.1:6070/netsvr?uniqId=',
-            ],
-
-        ],
-        'sendReceiveTimeout' => 5,
-        'connectTimeout' => 5,
-    ];
+            'sendReceiveTimeout' => 5,
+            'connectTimeout' => 5,
+        ];
+    }
 }

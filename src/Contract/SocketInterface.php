@@ -27,12 +27,7 @@ interface SocketInterface
     /**
      * @return string
      */
-    public function getHost(): string;
-
-    /**
-     * @return int
-     */
-    public function getPort(): int;
+    public function getWorkerAddr(): string;
 
     /**
      * 判断连接是否正常

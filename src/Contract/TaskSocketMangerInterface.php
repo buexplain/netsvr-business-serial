@@ -22,18 +22,17 @@ namespace NetsvrBusiness\Contract;
 interface TaskSocketMangerInterface
 {
     /***
-     * @param int $serverId
      * @param TaskSocketInterface $socket
      * @return void
      */
-    public function addSocket(int $serverId, TaskSocketInterface $socket): void;
+    public function addSocket(TaskSocketInterface $socket): void;
 
     /**
-     * 根据网关的serverId获取具体网关的连接
-     * @param int $serverId
+     * 根据网关的workerAddr获取具体网关的连接，注意这个地址是16进制字符串
+     * @param string $workerAddrAsHex
      * @return TaskSocketInterface|null
      */
-    public function getSocket(int $serverId): ?TaskSocketInterface;
+    public function getSocket(string $workerAddrAsHex): ?TaskSocketInterface;
 
     /**
      * 获取所有网关的连接

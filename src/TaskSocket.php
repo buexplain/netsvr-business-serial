@@ -19,7 +19,6 @@ declare(strict_types=1);
 
 namespace NetsvrBusiness;
 
-use Netsvr\Constant;
 use NetsvrBusiness\Contract\TaskSocketInterface;
 use Psr\Log\LoggerInterface;
 
@@ -45,23 +44,32 @@ class TaskSocket extends Socket implements TaskSocketInterface
     protected int $lastUseTime = 0;
 
     /**
-     * @param string $host netsvr网关的worker服务器监听的主机
-     * @param int $port netsvr网关的worker服务器监听的端口
+     * @var string business进程向网关的worker服务器发送的心跳消息
+     */
+    protected string $workerHeartbeatMessage;
+
+    /**
+     * @param string $logPrefix 日志前缀
+     * @param LoggerInterface $logger
+     * @param string $workerAddr netsvr网关的worker服务器监听的tcp地址
+     * @param string $workerHeartbeatMessage business进程向网关的worker服务器发送的心跳消息
      * @param int $sendReceiveTimeout 读写数据超时，单位秒
      * @param int $connectTimeout 连接到服务端超时，单位秒
+     * @param int $maxIdleTime 最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
      */
     public function __construct(
         string          $logPrefix,
         LoggerInterface $logger,
-        string          $host,
-        int             $port,
+        string          $workerAddr,
+        string          $workerHeartbeatMessage,
         int             $sendReceiveTimeout,
         int             $connectTimeout,
         int             $maxIdleTime,
     )
     {
-        parent::__construct($logPrefix, $logger, $host, $port, $sendReceiveTimeout, $connectTimeout);
+        parent::__construct($logPrefix, $logger, $workerAddr, $sendReceiveTimeout, $connectTimeout);
         $this->maxIdleTime = $maxIdleTime;
+        $this->workerHeartbeatMessage = $workerHeartbeatMessage;
     }
 
     public function send(string $data): bool
@@ -102,10 +110,6 @@ class TaskSocket extends Socket implements TaskSocketInterface
      */
     public function heartbeat(): bool
     {
-        if (self::send(Constant::PING_MESSAGE) && parent::receive() === Constant::PONG_MESSAGE) {
-            //成功接收到心跳
-            return true;
-        }
-        return false;
+        return self::send($this->workerHeartbeatMessage);
     }
 }

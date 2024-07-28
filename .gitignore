@@ -7,3 +7,4 @@ vendor
 .phpunit.result.cache
 coverage
 phpunit.log
+tests/Auxiliary/*.log
