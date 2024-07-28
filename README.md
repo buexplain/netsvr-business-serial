@@ -88,7 +88,7 @@ class NetBusServiceProvider extends ServiceProvider
                 ],
             ],
             //向网关的worker服务器发送的心跳消息，这个字符串与网关的worker服务器的配置要一致
-            'workerHeartbeatMessage' => '~3yPvmnzu38NZv~',
+            'workerHeartbeatMessage' => '~6YOt5rW35piO~',
             //读写数据超时，单位秒
             'sendReceiveTimeout' => 5,
             //连接到服务端超时，单位秒

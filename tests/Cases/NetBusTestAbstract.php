@@ -40,7 +40,7 @@ use function NetsvrBusiness\milliSleep;
 
 abstract class NetBusTestAbstract extends TestCase
 {
-    public const WORKER_HEARTBEAT_MESSAGE = '~3yPvmnzu38NZv~';
+    public const WORKER_HEARTBEAT_MESSAGE = '~6YOt5rW35piO~';
 
     /**
      * 返回网关配置
