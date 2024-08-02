@@ -7,4 +7,4 @@ vendor
 .phpunit.result.cache
 coverage
 phpunit.log
-tests/Auxiliary/*.log
+/tests/Auxiliary/log/netSvr.log
