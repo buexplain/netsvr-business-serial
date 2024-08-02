@@ -68,6 +68,11 @@ class Socket implements SocketInterface
     protected bool $connected = false;
 
     /**
+     * @var string 读取缓冲池
+     */
+    protected string $receiveBuffer = '';
+
+    /**
      * @param string $logPrefix
      * @param LoggerInterface $logger
      * @param string $workerAddr netsvr网关的worker服务器监听的tcp地址
@@ -97,6 +102,11 @@ class Socket implements SocketInterface
         $this->close();
     }
 
+    public function getSocket()
+    {
+        return $this->socket;
+    }
+
     /**
      * @return string
      */
@@ -124,16 +134,16 @@ class Socket implements SocketInterface
             return;
         }
         $this->connected = false;
-        if (is_resource($this->socket)) {
-            try {
+        try {
+            if (is_resource($this->socket)) {
                 fclose($this->socket);
-            } catch (Throwable) {
-            } finally {
-                $this->socket = null;
-                $this->logger->info(sprintf($this->logPrefix . 'close connection %s ok.',
-                    $this->workerAddr,
-                ));
             }
+        } catch (Throwable) {
+        } finally {
+            $this->socket = null;
+            $this->logger->info(sprintf($this->logPrefix . 'close connection %s ok.',
+                $this->workerAddr,
+            ));
         }
     }
 
@@ -159,6 +169,7 @@ class Socket implements SocketInterface
             //存储到本对象的属性
             $this->socket = $socket;
             $this->connected = true;
+            $this->receiveBuffer = '';
             $this->logger->info(sprintf($this->logPrefix . 'connect to %s ok.',
                 $this->workerAddr,
             ));
@@ -205,7 +216,7 @@ class Socket implements SocketInterface
                 $length -= $ret;
             }
         } catch (Throwable $throwable) {
-            $this->connected = false;
+            $this->close();
             $this->logger->error(sprintf($this->logPrefix . 'send to %s failed.%s%s',
                 $this->workerAddr,
                 PHP_EOL,
@@ -215,30 +226,37 @@ class Socket implements SocketInterface
         }
     }
 
-    /**
-     * 从socket中读取一定长度的数据
-     * @param int $length
-     * @return string
-     */
     protected function _receive(int $length): string
     {
-        $buffer = fread($this->socket, $length);
-        if ($buffer === false || $buffer === '') {
-            $info = stream_get_meta_data($this->socket);
-            if ($info['timed_out']) {
-                //读取数据超时
-                return '';
+        while (true) {
+            if (strlen($this->receiveBuffer) >= $length) {
+                $buffer = substr($this->receiveBuffer, 0, $length);
+                $this->receiveBuffer = substr($this->receiveBuffer, $length);
+                return $buffer;
             }
-            $error = error_get_last();
-            if ($error) {
-                $message = $error['message'];
-                error_clear_last();
-            } else {
-                $message = 'netsvr server closed the connection';
+            $buffer = fread($this->socket, 65536);
+            //读取失败，退出循环
+            if ($buffer === false) {
+                $error = error_get_last();
+                if ($error) {
+                    $message = $error['message'];
+                    error_clear_last();
+                } else {
+                    $message = 'netsvr server closed the connection';
+                }
+                throw new SocketReceiveException($message);
             }
-            throw new SocketReceiveException($message);
+            //读取失败，确认是超时，还是是其他错误
+            if ($buffer === '') {
+                $info = stream_get_meta_data($this->socket);
+                if ($info['timed_out']) {
+                    //读取数据超时
+                    return '';
+                }
+                throw new SocketReceiveException('netsvr server closed the connection');
+            }
+            $this->receiveBuffer .= $buffer;
         }
-        return $buffer;
     }
 
     /**
@@ -255,27 +273,20 @@ class Socket implements SocketInterface
                 return '';
             }
             //解析出包体长度
-            $prefix = unpack('N', $buffer);
-            if (!is_array($prefix) || !isset($prefix[1]) || !is_int($prefix[1])) {
+            $packageLength = unpack('N', $buffer);
+            if (!is_array($packageLength) || !isset($packageLength[1]) || !is_int($packageLength[1])) {
                 throw new SocketReceiveException('unpack netsvr package length failed.', 0);
             }
-            $packageLength = $prefix[1];
             //再读取包体数据
-            $packageBody = '';
-            $readBytes = $packageLength;
-            while ($readBytes > 0) {
-                $buffer = $this->_receive(min($readBytes, 65536));
-                if ($buffer === '') {
-                    //读取超时，因为包头读取成功了，此时tcp流中的包体读取超时，则算读取失败，否则无法解析出一个完整的业务包
-                    $this->connected = false;
-                    return false;
-                }
-                $packageBody .= $buffer;
-                $readBytes -= strlen($buffer);
+            $packageBody = $this->_receive($packageLength[1]);
+            if ($packageBody === '') {
+                //读取超时，因为包头读取成功了，此时tcp流中的包体读取超时，则算读取失败，否则无法解析出一个完整的业务包
+                $this->close();
+                return false;
             }
             return $packageBody;
         } catch (Throwable $throwable) {
-            $this->connected = false;
+            $this->close();
             $this->logger->error(sprintf($this->logPrefix . 'receive from %s failed.%s%s',
                 $this->workerAddr,
                 PHP_EOL,

@@ -84,7 +84,6 @@ abstract class NetBusTestAbstract extends TestCase
                     $logPrefix,
                     new NullLogger(),
                     $config['workerAddr'],
-                    $config['workerHeartbeatMessage'],
                     static::getNetsvrConfig()['sendReceiveTimeout'],
                     static::getNetsvrConfig()['connectTimeout'],
                     $config['maxIdleTime']

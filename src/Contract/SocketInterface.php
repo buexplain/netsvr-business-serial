@@ -25,6 +25,12 @@ namespace NetsvrBusiness\Contract;
 interface SocketInterface
 {
     /**
+     * 获取底层的socket对象
+     * @return resource|null
+     */
+    public function getSocket();
+
+    /**
      * @return string
      */
     public function getWorkerAddr(): string;

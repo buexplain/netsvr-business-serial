@@ -42,6 +42,15 @@ class TaskSocketManger implements TaskSocketMangerInterface
     }
 
     /**
+     * 返回连接的数量
+     * @return int
+     */
+    public function count(): int
+    {
+        return count($this->sockets);
+    }
+
+    /**
      * @param string $workerAddrAsHex
      * @return TaskSocketInterface|null
      */
@@ -56,5 +65,15 @@ class TaskSocketManger implements TaskSocketMangerInterface
     public function getSockets(): array
     {
         return $this->sockets;
+    }
+
+    /**
+     * @return void
+     */
+    public function close(): void
+    {
+        foreach ($this->getSockets() as $socket) {
+            $socket->close();
+        }
     }
 }

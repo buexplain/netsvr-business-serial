@@ -44,15 +44,9 @@ class TaskSocket extends Socket implements TaskSocketInterface
     protected int $lastUseTime = 0;
 
     /**
-     * @var string business进程向网关的worker服务器发送的心跳消息
-     */
-    protected string $workerHeartbeatMessage;
-
-    /**
      * @param string $logPrefix 日志前缀
      * @param LoggerInterface $logger
      * @param string $workerAddr netsvr网关的worker服务器监听的tcp地址
-     * @param string $workerHeartbeatMessage business进程向网关的worker服务器发送的心跳消息
      * @param int $sendReceiveTimeout 读写数据超时，单位秒
      * @param int $connectTimeout 连接到服务端超时，单位秒
      * @param int $maxIdleTime 最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
@@ -61,7 +55,6 @@ class TaskSocket extends Socket implements TaskSocketInterface
         string          $logPrefix,
         LoggerInterface $logger,
         string          $workerAddr,
-        string          $workerHeartbeatMessage,
         int             $sendReceiveTimeout,
         int             $connectTimeout,
         int             $maxIdleTime,
@@ -69,7 +62,6 @@ class TaskSocket extends Socket implements TaskSocketInterface
     {
         parent::__construct($logPrefix, $logger, $workerAddr, $sendReceiveTimeout, $connectTimeout);
         $this->maxIdleTime = $maxIdleTime;
-        $this->workerHeartbeatMessage = $workerHeartbeatMessage;
     }
 
     public function send(string $data): bool
@@ -102,14 +94,5 @@ class TaskSocket extends Socket implements TaskSocketInterface
             $this->lastUseTime = 0;
         }
         return $ret;
-    }
-
-    /**
-     * 做一次心跳检查，看看连接是否正常
-     * @return bool
-     */
-    public function heartbeat(): bool
-    {
-        return self::send($this->workerHeartbeatMessage);
     }
 }

@@ -21,11 +21,30 @@ namespace NetsvrBusiness\Contract;
 
 interface TaskSocketMangerInterface
 {
-    /***
+    /**
+     * 关闭所有连接池
+     * @return void
+     */
+    public function close(): void;
+
+    /**
+     * 添加一个连接
      * @param TaskSocketInterface $socket
      * @return void
      */
     public function addSocket(TaskSocketInterface $socket): void;
+
+    /**
+     * 返回连接的数量
+     * @return int
+     */
+    public function count(): int;
+
+    /**
+     * 获取所有网关的连接
+     * @return array|TaskSocketInterface[]
+     */
+    public function getSockets(): array;
 
     /**
      * 根据网关的workerAddr获取具体网关的连接，注意这个地址是16进制字符串
@@ -33,10 +52,4 @@ interface TaskSocketMangerInterface
      * @return TaskSocketInterface|null
      */
     public function getSocket(string $workerAddrAsHex): ?TaskSocketInterface;
-
-    /**
-     * 获取所有网关的连接
-     * @return array|TaskSocketInterface[]
-     */
-    public function getSockets(): array;
 }

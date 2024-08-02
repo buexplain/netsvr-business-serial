@@ -1,6 +1,6 @@
 {
   "name": "buexplain/netsvr-business-serial",
-  "description": "这是一个可以快速开发websocket单工通信业务的包，它必须在串行的php程序中工作，它基于https://github.com/buexplain/netsvr进行工作。",
+  "description": "这是一个可以快速开发websocket业务的包，它必须在串行的php程序中工作，它基于https://github.com/buexplain/netsvr进行工作。",
   "license": "Apache-2.0",
   "authors": [
     {
@@ -36,7 +36,9 @@
   "require-dev": {
     "google/protobuf": "^3.22",
     "phpunit/phpunit": "^10.0",
-    "phrity/websocket": "^v3.0"
+    "phrity/websocket": "^v3.0",
+    "workerman/workerman": "^4.1",
+    "ext-pcntl": "*"
   },
   "scripts": {
     "test": "phpunit --configuration phpunit.xml --log-events-verbose-text phpunit.log"

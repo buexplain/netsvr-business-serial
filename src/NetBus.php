@@ -68,6 +68,8 @@ use Netsvr\TopicUniqIdListRespItem;
 use Netsvr\TopicUnsubscribe;
 use Netsvr\UniqIdCountResp;
 use Netsvr\UniqIdListResp;
+use NetsvrBusiness\Contract\MainSocketInterface;
+use NetsvrBusiness\Contract\MainSocketManagerInterface;
 use NetsvrBusiness\Contract\TaskSocketInterface;
 use NetsvrBusiness\Contract\TaskSocketMangerInterface;
 use NetsvrBusiness\Exception\SocketReceiveException;
@@ -1085,6 +1087,16 @@ class NetBus
      */
     protected static function sendToSockets(string $data): void
     {
+        //优先用mainSocket发送，因为mainSocket是异步发送的，而且网关可以为mainSocket开启多条协程处理这些信息
+        if (Container::getInstance()->has(MainSocketManagerInterface::class)) {
+            $sockets = Container::getInstance()->get(MainSocketManagerInterface::class)->getSockets();
+            if (!empty($sockets)) {
+                foreach ($sockets as $socket) {
+                    $socket->send($data);
+                }
+                return;
+            }
+        }
         $sockets = self::getTaskSocketManger()->getSockets();
         if (!empty($sockets)) {
             foreach ($sockets as $socket) {
@@ -1103,6 +1115,14 @@ class NetBus
      */
     protected static function sendToSocketByUniqId(string $uniqId, string $data): void
     {
+        //优先用mainSocket发送，因为mainSocket是异步发送的，而且网关可以为mainSocket开启多条协程处理这些信息
+        if (Container::getInstance()->has(MainSocketManagerInterface::class)) {
+            $socket = Container::getInstance()->get(MainSocketManagerInterface::class)->getSocket(uniqIdConvertToWorkerAddrAsHex($uniqId));
+            if ($socket instanceof MainSocketInterface) {
+                $socket->send($data);
+                return;
+            }
+        }
         $socket = self::getSocketByUniqId($uniqId);
         if ($socket instanceof TaskSocketInterface) {
             $socket->send($data);
@@ -1119,6 +1139,14 @@ class NetBus
      */
     protected static function sendToSocketByWorkerAddrAsHex(string $workerAddrAsHex, string $data): void
     {
+        //优先用mainSocket发送，因为mainSocket是异步发送的，而且网关可以为mainSocket开启多条协程处理这些信息
+        if (Container::getInstance()->has(MainSocketManagerInterface::class)) {
+            $socket = Container::getInstance()->get(MainSocketManagerInterface::class)->getSocket($workerAddrAsHex);
+            if ($socket instanceof MainSocketInterface) {
+                $socket->send($data);
+                return;
+            }
+        }
         /**
          * @var $socket TaskSocketInterface
          */
@@ -1146,7 +1174,7 @@ class NetBus
      */
     protected static function isSinglePoint(): bool
     {
-        return count(self::getTaskSocketManger()->getSockets()) == 1;
+        return self::getTaskSocketManger()->count() == 1;
     }
 
     /**
@@ -1163,8 +1191,6 @@ class NetBus
      * 将uniqId进行分组，同一网关的归到一组
      * @param array $uniqIds 包含uniqId的数组
      * @return array key是网关的worker服务器监听地址的16进制表示，value是包含uniqId的数组
-     * @throws ContainerExceptionInterface
-     * @throws NotFoundExceptionInterface
      */
     protected static function getUniqIdsGroupByWorkerAddrAsHex(array $uniqIds): array
     {
