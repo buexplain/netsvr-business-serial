@@ -264,7 +264,7 @@ abstract class NetBusTestAbstract extends TestCase
     {
         //连接到网关
         $this->resetWsClient();
-        $message = uniqid() . str_repeat('a', (int)(65536 * 3.5)); //这个数字随便定义的
+        $message = uniqid() . str_repeat('a', (int)(65536 * 3.5)); //这个数字随便订阅的
         NetBus::broadcast($message);
         foreach (static::$wsClients as $client) {
             //接收每个连接的数据，并判断是否与之前发送的一致
@@ -1040,7 +1040,7 @@ abstract class NetBusTestAbstract extends TestCase
         $this->resetWsClient();
         $uniqIds = $this->getDefaultUniqIds();
         $topics = [uniqid(), uniqid(), uniqid(), uniqid()];
-        //每个连接都定义主题、设定客户端id
+        //每个连接都订阅主题、设定客户端id
         foreach ($uniqIds as $uniqId) {
             $up = new ConnInfoUpdate();
             $up->setUniqId($uniqId);
@@ -1062,6 +1062,62 @@ abstract class NetBusTestAbstract extends TestCase
     }
 
     /**
+     * composer test -- --filter=testTopicCustomerIdToUniqIdsList
+     * @throws NotFoundExceptionInterface
+     * @throws Throwable
+     * @throws ContainerExceptionInterface
+     * @throws ErrorException
+     */
+    public function testTopicCustomerIdToUniqIdsList()
+    {
+        //连接到网关
+        $this->resetWsClient();
+        $uniqIds = $this->getDefaultUniqIds();
+        $uniqIdsArr = array_chunk($uniqIds, 2);
+        $topics = [uniqid(), uniqid(), uniqid(), uniqid()];
+        //每个连接都订阅主题、设定客户端id
+        $validData = [];
+        foreach ($uniqIdsArr as $k => $uniqIds) {
+            //客户端id，被多个连接持有，相当于一个用户账号登录了两台设备
+            $customerId = "customerId$k";
+            sort($uniqIds);
+            $validData[$customerId] = $uniqIds;
+            foreach ($uniqIds as $uniqId) {
+                $up = new ConnInfoUpdate();
+                $up->setUniqId($uniqId);
+                $up->setNewTopics($topics);
+                $up->setNewCustomerId($customerId);
+                NetBus::connInfoUpdate($up);
+            }
+        }
+        //获取主题的客户端id以及其对应的uniqId列表
+        $ret = NetBus::topicCustomerIdToUniqIdsList($topics);
+        $retData = [];
+        foreach ($ret as $value) {
+            $this->assertSameSize($topics, $value['items'], "返回的topic数量不符合预期");
+            foreach ($value['items'] as $item) {
+                $this->assertTrue(in_array($item['topic'], $topics), "返回的topic不符合预期");
+                $customerIdToUniqIdsList = $item['items'];
+                foreach ($customerIdToUniqIdsList as $customerIdToUniqIds) {
+                    $customerId = $customerIdToUniqIds['customerId'];
+                    $uniqIds = $customerIdToUniqIds['uniqIds'];
+                    if (isset($retData[$customerId])) {
+                        $retData[$customerId] = array_merge($retData[$customerId], $uniqIds);
+                    } else {
+                        $retData[$customerId] = $uniqIds;
+                    }
+                }
+            }
+        }
+        foreach ($validData as $customerId => $uniqIds) {
+            $this->assertTrue(isset($retData[$customerId]), "返回的customerId不存在");
+            $tmp = array_unique($retData[$customerId]);
+            sort($tmp);
+            $this->assertEquals($uniqIds, $tmp, "返回的uniqId列表不符合预期");
+        }
+    }
+
+    /**
      * composer test -- --filter=testTopicCustomerIdCount
      * @throws NotFoundExceptionInterface
      * @throws Throwable
@@ -1074,7 +1130,7 @@ abstract class NetBusTestAbstract extends TestCase
         $this->resetWsClient();
         $uniqIds = $this->getDefaultUniqIds();
         $topics = [uniqid(), uniqid(), uniqid(), uniqid()];
-        //每个连接都定义主题、设定客户端id
+        //每个连接都订阅主题、设定客户端id
         foreach ($uniqIds as $uniqId) {
             $up = new ConnInfoUpdate();
             $up->setUniqId($uniqId);

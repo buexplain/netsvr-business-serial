@@ -36,6 +36,7 @@ use Netsvr\ConnInfoRespItem;
 use Netsvr\ConnInfoUpdate;
 use Netsvr\CustomerIdCountResp;
 use Netsvr\CustomerIdListResp;
+use Netsvr\CustomerIdToUniqIdsRespItem;
 use Netsvr\ForceOffline;
 use Netsvr\ForceOfflineByCustomerId;
 use Netsvr\ForceOfflineGuest;
@@ -55,6 +56,9 @@ use Netsvr\TopicCustomerIdCountResp;
 use Netsvr\TopicCustomerIdListReq;
 use Netsvr\TopicCustomerIdListResp;
 use Netsvr\TopicCustomerIdListRespItem;
+use Netsvr\TopicCustomerIdToUniqIdsListReq;
+use Netsvr\TopicCustomerIdToUniqIdsListResp;
+use Netsvr\TopicCustomerIdToUniqIdsListRespItem;
 use Netsvr\TopicDelete;
 use Netsvr\TopicListResp;
 use Netsvr\TopicPublish;
@@ -709,7 +713,7 @@ class NetBus
     /**
      * 获取网关中某几个主题包含的customerId
      * @param array|string|string[] $topics
-     * @return array[] 注意一个uniqId可能订阅了多个主题
+     * @return array[]
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      * @throws Throwable
@@ -739,6 +743,55 @@ class NetBus
                     'topic' => $topic,
                     'customerIds' => self::repeatedFieldToArray($item->getCustomerIds()),
                 ];
+            }
+            $ret[] = $items;
+        }
+        return $ret;
+    }
+
+    /**
+     * 获取网关中目标topic的customerId以及对应的uniqId列表
+     * @param array|string|string[] $topics
+     * @return array[]
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     * @throws Throwable
+     */
+    public static function topicCustomerIdToUniqIdsList(array|string $topics): array
+    {
+        $sockets = self::getTaskSocketManger()->getSockets();
+        $req = self::pack(Cmd::TopicCustomerIdToUniqIdsList, (new TopicCustomerIdToUniqIdsListReq())->setTopics((array)$topics)->serializeToString());
+        $ret = [];
+        foreach ($sockets as $socket) {
+            $socket->send($req);
+            $respData = $socket->receive();
+            if ($respData === '' || $respData === false) {
+                throw new SocketReceiveException('call Cmd::TopicCustomerIdToUniqIdsList failed because the connection to the netsvr was disconnected');
+            }
+            $resp = new TopicCustomerIdToUniqIdsListResp();
+            $resp->mergeFromString(self::unpack($respData));
+            $items = [
+                'workerAddr' => $socket->getWorkerAddr(),
+                'items' => [],
+            ];
+            foreach ($resp->getItems() as $topic => $customerIdToUniqIdsList) {
+                /**
+                 * @var $customerIdToUniqIdsList TopicCustomerIdToUniqIdsListRespItem
+                 */
+                $item = [
+                    'topic' => $topic,
+                    'items' => [],
+                ];
+                foreach ($customerIdToUniqIdsList->getItems() as $customerId => $uniqIds) {
+                    /**
+                     * @var $uniqIds CustomerIdToUniqIdsRespItem
+                     */
+                    $item['items'][] = [
+                        'customerId' => $customerId,
+                        'uniqIds' => self::repeatedFieldToArray($uniqIds->getUniqIds()),
+                    ];
+                }
+                $items['items'][] = $item;
             }
             $ret[] = $items;
         }
@@ -950,20 +1003,12 @@ class NetBus
                     'count' => $metricsValue->getCount(),
                     //每秒速率
                     'meanRate' => round($metricsValue->getMeanRate(), $precision),
-                    //每秒速率的最大值
-                    'meanRateMax' => round($metricsValue->getMeanRateMax(), $precision),
                     //每1分钟速率
                     'rate1' => round($metricsValue->getRate1(), $precision),
-                    //每1分钟速率的最大值
-                    'rate1Max' => round($metricsValue->getRate1Max(), $precision),
                     //每5分钟速率
                     'rate5' => round($metricsValue->getRate5(), $precision),
-                    //每5分钟速率的最大值
-                    'rate5Max' => round($metricsValue->getRate5Max(), $precision),
                     //每15分钟速率
                     'rate15' => round($metricsValue->getRate15(), $precision),
-                    //每15分钟速率的最大值
-                    'rate15Max' => round($metricsValue->getRate15Max(), $precision),
                 ];
             }
         }
