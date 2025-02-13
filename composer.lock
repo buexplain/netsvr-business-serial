@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6359b0a953bb697c84860bf823c00f59",
+    "content-hash": "058034e5d75b576972ac20bb71ff4d7c",
     "packages": [
         {
             "name": "buexplain/netsvr-protocol-php",
-            "version": "v4.0.0",
+            "version": "v5.0.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/buexplain/netsvr-protocol-php.git",
-                "reference": "b9f16a9f26d7ac9ffac118e149d648750e5a3cfe"
+                "reference": "d3752171560ec9a5907292d47bfce9b4874a0b90"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/buexplain/netsvr-protocol-php/zipball/b9f16a9f26d7ac9ffac118e149d648750e5a3cfe",
-                "reference": "b9f16a9f26d7ac9ffac118e149d648750e5a3cfe",
+                "url": "https://api.github.com/repos/buexplain/netsvr-protocol-php/zipball/d3752171560ec9a5907292d47bfce9b4874a0b90",
+                "reference": "d3752171560ec9a5907292d47bfce9b4874a0b90",
                 "shasum": "",
                 "mirrors": [
                     {
@@ -30,12 +30,12 @@
                 "php": ">=8.0"
             },
             "require-dev": {
-                "buexplain/netsvr-protocol": "^v4.0.0"
+                "buexplain/netsvr-protocol": "^v5.0.0"
             },
             "type": "library",
             "autoload": {
                 "psr-4": {
-                    "Netsvr\\": "src/Netsvr/"
+                    "NetsvrProtocol\\": "src/NetsvrProtocol/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -51,9 +51,9 @@
             "description": "https://github.com/buexplain/netsvr-protocol生成的php版本",
             "support": {
                 "issues": "https://github.com/buexplain/netsvr-protocol-php/issues",
-                "source": "https://github.com/buexplain/netsvr-protocol-php/tree/v4.0.0"
+                "source": "https://github.com/buexplain/netsvr-protocol-php/tree/v5.0.0"
             },
-            "time": "2024-11-10T07:04:50+00:00"
+            "time": "2025-02-13T11:19:13+00:00"
         },
         {
             "name": "psr/container",
@@ -174,16 +174,16 @@
     "packages-dev": [
         {
             "name": "google/protobuf",
-            "version": "v3.25.5",
+            "version": "v3.25.6",
             "source": {
                 "type": "git",
                 "url": "https://github.com/protocolbuffers/protobuf-php.git",
-                "reference": "dd2cf3f7b577dced3851c2ea76c3daa9f8aa0ff4"
+                "reference": "fd843c68d1fb6d2f0010f4157f5febd08b723d6f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/protocolbuffers/protobuf-php/zipball/dd2cf3f7b577dced3851c2ea76c3daa9f8aa0ff4",
-                "reference": "dd2cf3f7b577dced3851c2ea76c3daa9f8aa0ff4",
+                "url": "https://api.github.com/repos/protocolbuffers/protobuf-php/zipball/fd843c68d1fb6d2f0010f4157f5febd08b723d6f",
+                "reference": "fd843c68d1fb6d2f0010f4157f5febd08b723d6f",
                 "shasum": "",
                 "mirrors": [
                     {
@@ -218,9 +218,9 @@
                 "proto"
             ],
             "support": {
-                "source": "https://github.com/protocolbuffers/protobuf-php/tree/v3.25.5"
+                "source": "https://github.com/protocolbuffers/protobuf-php/tree/v3.25.6"
             },
-            "time": "2024-09-18T22:04:15+00:00"
+            "time": "2025-01-24T20:17:25+00:00"
         },
         {
             "name": "myclabs/deep-copy",
@@ -289,16 +289,16 @@
         },
         {
             "name": "nikic/php-parser",
-            "version": "v5.3.0",
+            "version": "v5.3.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/nikic/PHP-Parser.git",
-                "reference": "3abf7425cd284141dc5d8d14a9ee444de3345d1a"
+                "reference": "8eea230464783aa9671db8eea6f8c6ac5285794b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nikic/PHP-Parser/zipball/3abf7425cd284141dc5d8d14a9ee444de3345d1a",
-                "reference": "3abf7425cd284141dc5d8d14a9ee444de3345d1a",
+                "url": "https://api.github.com/repos/nikic/PHP-Parser/zipball/8eea230464783aa9671db8eea6f8c6ac5285794b",
+                "reference": "8eea230464783aa9671db8eea6f8c6ac5285794b",
                 "shasum": "",
                 "mirrors": [
                     {
@@ -347,9 +347,9 @@
             ],
             "support": {
                 "issues": "https://github.com/nikic/PHP-Parser/issues",
-                "source": "https://github.com/nikic/PHP-Parser/tree/v5.3.0"
+                "source": "https://github.com/nikic/PHP-Parser/tree/v5.3.1"
             },
-            "time": "2024-09-29T13:56:26+00:00"
+            "time": "2024-10-08T18:51:32+00:00"
         },
         {
             "name": "phar-io/manifest",
@@ -476,16 +476,16 @@
         },
         {
             "name": "phpunit/php-code-coverage",
-            "version": "10.1.15",
+            "version": "10.1.16",
             "source": {
                 "type": "git",
                 "url": "https://github.com/sebastianbergmann/php-code-coverage.git",
-                "reference": "5da8b1728acd1e6ffdf2ff32ffbdfd04307f26ae"
+                "reference": "7e308268858ed6baedc8704a304727d20bc07c77"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/sebastianbergmann/php-code-coverage/zipball/5da8b1728acd1e6ffdf2ff32ffbdfd04307f26ae",
-                "reference": "5da8b1728acd1e6ffdf2ff32ffbdfd04307f26ae",
+                "url": "https://api.github.com/repos/sebastianbergmann/php-code-coverage/zipball/7e308268858ed6baedc8704a304727d20bc07c77",
+                "reference": "7e308268858ed6baedc8704a304727d20bc07c77",
                 "shasum": "",
                 "mirrors": [
                     {
@@ -498,16 +498,16 @@
                 "ext-dom": "*",
                 "ext-libxml": "*",
                 "ext-xmlwriter": "*",
-                "nikic/php-parser": "^4.18 || ^5.0",
+                "nikic/php-parser": "^4.19.1 || ^5.1.0",
                 "php": ">=8.1",
-                "phpunit/php-file-iterator": "^4.0",
-                "phpunit/php-text-template": "^3.0",
-                "sebastian/code-unit-reverse-lookup": "^3.0",
-                "sebastian/complexity": "^3.0",
-                "sebastian/environment": "^6.0",
-                "sebastian/lines-of-code": "^2.0",
-                "sebastian/version": "^4.0",
-                "theseer/tokenizer": "^1.2.0"
+                "phpunit/php-file-iterator": "^4.1.0",
+                "phpunit/php-text-template": "^3.0.1",
+                "sebastian/code-unit-reverse-lookup": "^3.0.0",
+                "sebastian/complexity": "^3.2.0",
+                "sebastian/environment": "^6.1.0",
+                "sebastian/lines-of-code": "^2.0.2",
+                "sebastian/version": "^4.0.1",
+                "theseer/tokenizer": "^1.2.3"
             },
             "require-dev": {
                 "phpunit/phpunit": "^10.1"
@@ -519,7 +519,7 @@
             "type": "library",
             "extra": {
                 "branch-alias": {
-                    "dev-main": "10.1-dev"
+                    "dev-main": "10.1.x-dev"
                 }
             },
             "autoload": {
@@ -548,7 +548,7 @@
             "support": {
                 "issues": "https://github.com/sebastianbergmann/php-code-coverage/issues",
                 "security": "https://github.com/sebastianbergmann/php-code-coverage/security/policy",
-                "source": "https://github.com/sebastianbergmann/php-code-coverage/tree/10.1.15"
+                "source": "https://github.com/sebastianbergmann/php-code-coverage/tree/10.1.16"
             },
             "funding": [
                 {
@@ -556,7 +556,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2024-06-29T08:25:15+00:00"
+            "time": "2024-08-22T04:31:57+00:00"
         },
         {
             "name": "phpunit/php-file-iterator",
@@ -827,16 +827,16 @@
         },
         {
             "name": "phpunit/phpunit",
-            "version": "10.5.20",
+            "version": "10.5.26",
             "source": {
                 "type": "git",
                 "url": "https://github.com/sebastianbergmann/phpunit.git",
-                "reference": "547d314dc24ec1e177720d45c6263fb226cc2ae3"
+                "reference": "42e2f13ceaa2e34461bc89bea75407550b40b2aa"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/sebastianbergmann/phpunit/zipball/547d314dc24ec1e177720d45c6263fb226cc2ae3",
-                "reference": "547d314dc24ec1e177720d45c6263fb226cc2ae3",
+                "url": "https://api.github.com/repos/sebastianbergmann/phpunit/zipball/42e2f13ceaa2e34461bc89bea75407550b40b2aa",
+                "reference": "42e2f13ceaa2e34461bc89bea75407550b40b2aa",
                 "shasum": "",
                 "mirrors": [
                     {
@@ -914,7 +914,7 @@
             "support": {
                 "issues": "https://github.com/sebastianbergmann/phpunit/issues",
                 "security": "https://github.com/sebastianbergmann/phpunit/security/policy",
-                "source": "https://github.com/sebastianbergmann/phpunit/tree/10.5.20"
+                "source": "https://github.com/sebastianbergmann/phpunit/tree/10.5.26"
             },
             "funding": [
                 {
@@ -930,20 +930,20 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2024-04-24T06:32:35+00:00"
+            "time": "2024-07-08T05:30:46+00:00"
         },
         {
             "name": "phrity/net-stream",
-            "version": "2.1.0",
+            "version": "2.1.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/sirn-se/phrity-net-stream.git",
-                "reference": "875d87c246cfacd66feaf6b0390f1e5d6985ad54"
+                "reference": "e6ace997168bebcce814c95cd5c78c78663ae49a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/sirn-se/phrity-net-stream/zipball/875d87c246cfacd66feaf6b0390f1e5d6985ad54",
-                "reference": "875d87c246cfacd66feaf6b0390f1e5d6985ad54",
+                "url": "https://api.github.com/repos/sirn-se/phrity-net-stream/zipball/e6ace997168bebcce814c95cd5c78c78663ae49a",
+                "reference": "e6ace997168bebcce814c95cd5c78c78663ae49a",
                 "shasum": "",
                 "mirrors": [
                     {
@@ -994,9 +994,9 @@
             ],
             "support": {
                 "issues": "https://github.com/sirn-se/phrity-net-stream/issues",
-                "source": "https://github.com/sirn-se/phrity-net-stream/tree/2.1.0"
+                "source": "https://github.com/sirn-se/phrity-net-stream/tree/2.1.2"
             },
-            "time": "2024-09-14T12:03:20+00:00"
+            "time": "2025-01-09T08:07:34+00:00"
         },
         {
             "name": "phrity/net-uri",
@@ -2372,16 +2372,16 @@
         },
         {
             "name": "workerman/workerman",
-            "version": "v4.2.0",
+            "version": "v4.2.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/walkor/workerman.git",
-                "reference": "df513f3fd274811ebb8358d05d7cec19ee8bd3e1"
+                "reference": "cafb5a43d93d7d30a16b32a57948581cca993562"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/walkor/workerman/zipball/df513f3fd274811ebb8358d05d7cec19ee8bd3e1",
-                "reference": "df513f3fd274811ebb8358d05d7cec19ee8bd3e1",
+                "url": "https://api.github.com/repos/walkor/workerman/zipball/cafb5a43d93d7d30a16b32a57948581cca993562",
+                "reference": "cafb5a43d93d7d30a16b32a57948581cca993562",
                 "shasum": "",
                 "mirrors": [
                     {
@@ -2437,7 +2437,7 @@
                     "type": "patreon"
                 }
             ],
-            "time": "2024-11-07T08:31:33+00:00"
+            "time": "2024-11-24T11:45:37+00:00"
         }
     ],
     "aliases": [],

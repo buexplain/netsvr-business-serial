@@ -19,9 +19,9 @@ declare(strict_types=1);
 
 namespace NetsvrBusiness\Contract;
 
-use Netsvr\ConnClose;
-use Netsvr\ConnOpen;
-use Netsvr\Transfer;
+use NetsvrProtocol\ConnClose;
+use NetsvrProtocol\ConnOpen;
+use NetsvrProtocol\Transfer;
 
 /**
  * 处理客户数据的接口，应用层必须实现该接口

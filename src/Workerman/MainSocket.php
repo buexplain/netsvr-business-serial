@@ -20,14 +20,14 @@ declare(strict_types=1);
 namespace NetsvrBusiness\Workerman;
 
 use Exception;
-use Netsvr\Cmd;
-use Netsvr\ConnClose;
-use Netsvr\ConnOpen;
-use Netsvr\RegisterReq;
-use Netsvr\RegisterResp;
-use Netsvr\Transfer;
-use Netsvr\UnRegisterReq;
-use Netsvr\UnRegisterResp;
+use NetsvrProtocol\Cmd;
+use NetsvrProtocol\ConnClose;
+use NetsvrProtocol\ConnOpen;
+use NetsvrProtocol\RegisterReq;
+use NetsvrProtocol\RegisterResp;
+use NetsvrProtocol\Transfer;
+use NetsvrProtocol\UnRegisterReq;
+use NetsvrProtocol\UnRegisterResp;
 use NetsvrBusiness\Container;
 use NetsvrBusiness\Contract\EventInterface;
 use NetsvrBusiness\Contract\MainSocketInterface;
@@ -71,7 +71,7 @@ class MainSocket implements MainSocketInterface
      */
     protected string $workerHeartbeatMessage;
     /**
-     * @var int 业务进程允许网关服务器转发的事件集合，具体的枚举值参考：Netsvr\Event类
+     * @var int 业务进程允许网关服务器转发的事件集合，具体的枚举值参考：NetsvrProtocol\Event类
      */
     protected int $events;
     /**

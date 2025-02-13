@@ -21,8 +21,8 @@ namespace NetsvrBusinessTest\Cases;
 
 use ErrorException;
 use Google\Protobuf\Internal\RepeatedField;
-use Netsvr\ConnInfoDelete;
-use Netsvr\ConnInfoUpdate;
+use NetsvrProtocol\ConnInfoDelete;
+use NetsvrProtocol\ConnInfoUpdate;
 use NetsvrBusiness\Container;
 use NetsvrBusiness\Contract\TaskSocketInterface;
 use NetsvrBusiness\Contract\TaskSocketMangerInterface;

@@ -147,9 +147,9 @@ declare(strict_types=1);
 namespace app;
 
 use Exception;
-use Netsvr\ConnClose;
-use Netsvr\ConnOpen;
-use Netsvr\Transfer;
+use NetsvrProtocol\ConnClose;
+use NetsvrProtocol\ConnOpen;
+use NetsvrProtocol\Transfer;
 use NetsvrBusiness\Container;
 use NetsvrBusiness\Contract\EventInterface;
 use NetsvrBusiness\Contract\MainSocketManagerInterface;
@@ -164,7 +164,7 @@ use Psr\Container\ContainerInterface;
 use Webman\Bootstrap;
 use Workerman\Worker;
 use support\Log;
-use Netsvr\Event;
+use NetsvrProtocol\Event;
 
 class NetsvrBootstrap implements Bootstrap
 {
