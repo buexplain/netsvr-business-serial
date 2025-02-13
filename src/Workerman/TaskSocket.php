@@ -27,7 +27,7 @@ class TaskSocket extends \NetsvrBusiness\TaskSocket
     /**
      * @var int|bool 心跳定时器的id
      */
-    protected int|bool $timerId = false;
+    protected int|bool|null $timerId = false;
 
     /**
      * @var int 与网关维持心跳的间隔毫秒数
