@@ -78,15 +78,18 @@ abstract class NetBusTestAbstract extends TestCase
         $container = Container::getInstance();
         $taskSocketManger = new TaskSocketManger();
         $logPrefix = sprintf('TaskSocket#%d', getmypid());
-        foreach (static::getNetsvrConfig()['netsvr'] as $config) {
+        foreach (static::getNetsvrConfig()['netsvr'] as $item) {
             try {
+                $item = array_merge(static::getNetsvrConfig(), $item);
                 $taskSocket = new TaskSocket(
                     $logPrefix,
                     new NullLogger(),
-                    $config['workerAddr'],
-                    static::getNetsvrConfig()['sendReceiveTimeout'],
-                    static::getNetsvrConfig()['connectTimeout'],
-                    $config['maxIdleTime']
+                    $item['workerAddr'],
+                    $item['sendReceiveTimeout'],
+                    $item['connectTimeout'],
+                    $item['maxIdleTime'],
+                    $item['workerHeartbeatMessage'],
+                    $item['heartbeatIntervalMillisecond'],
                 );
                 $taskSocketManger->addSocket($taskSocket);
                 $container->bind(TaskSocketInterface::class, $taskSocket);

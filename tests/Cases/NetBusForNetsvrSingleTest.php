@@ -30,13 +30,14 @@ final class NetBusForNetsvrSingleTest extends NetBusTestAbstract
             'netsvr' => [
                 [
                     'workerAddr' => '127.0.0.1:6071',
-                    'maxIdleTime' => 117,
                     'ws' => 'ws://127.0.0.1:6070/netsvr',
-                    'workerHeartbeatMessage' => self::WORKER_HEARTBEAT_MESSAGE,
                 ]
             ],
+            'maxIdleTime' => 117,
+            'workerHeartbeatMessage' => self::WORKER_HEARTBEAT_MESSAGE,
             'sendReceiveTimeout' => 5,
             'connectTimeout' => 5,
+            'heartbeatIntervalMillisecond' => 45 * 1000,
         ];
     }
 }
