@@ -52,7 +52,6 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
-use Laravel\Octane\Facades\Octane;
 use NetsvrBusiness\Container;
 use NetsvrBusiness\Contract\TaskSocketMangerInterface;
 use NetsvrBusiness\TaskSocket;
@@ -63,31 +62,30 @@ use NetsvrBusiness\TaskSocketManger;
  */
 class NetBusServiceProvider extends ServiceProvider
 {
-    protected array $netsvrConfig = [];
-
-    public function __construct($app)
+    /**
+     * 初始化配置信息，配置信息最好放在框架规定的目录，我写在这里只是方便演示
+     * @return array
+     */
+    protected static function getConfig(): array
     {
-        parent::__construct($app);
-        //配置信息可以放到config文件夹下，我写这里是方便阅读
-        //buexplain/netsvr-business-serial包支持网关分布式部署在多台机器上，并与之交互
-        $this->netsvrConfig = [
+        return [
+            //如果一台网关服务机器承载不了业务的websocket连接数，可以再部署一台网关服务机器，这里支持配置多个网关服务，处理多个网关服务的websocket消息
             'netsvr' => [
-                //第一台机器的网关的worker服务器的信息
                 [
-                    //网关的worker服务器地址
-                    'workerAddr' => '192.168.71.80:6061',
-                    //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
-                    'maxIdleTime' => 117,
-                ]
+                    //netsvr网关的worker服务器监听的tcp地址
+                    'workerAddr' => '127.0.0.1:6061',
+                ],
             ],
-            //读写数据超时，单位秒
+            //taskSocket的最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
+            'maxIdleTime' => 117,
+            //socket读写网关数据的超时时间，单位秒
             'sendReceiveTimeout' => 5,
-            //连接到服务端超时，单位秒
+            //连接到网关的超时时间，单位秒
             'connectTimeout' => 5,
             //business进程向网关的worker服务器发送的心跳消息，这个字符串与网关的worker服务器的配置要一致，如果错误，网关的worker服务器是会强制关闭连接的
             'workerHeartbeatMessage' => '~6YOt5rW35piO~',
             //维持心跳的间隔时间，单位毫秒
-            'heartbeatIntervalMillisecond' => 4 * 1000,
+            'heartbeatIntervalMillisecond' => 45 * 1000,
         ];
     }
 
@@ -102,15 +100,20 @@ class NetBusServiceProvider extends ServiceProvider
         $this->app->singleton(TaskSocketMangerInterface::class, function () {
             $taskSocketManger = new TaskSocketManger();
             $logPrefix = sprintf('TaskSocket#%d', getmypid());
-            foreach ($this->netsvrConfig['netsvr'] as $config) {
+            foreach (self::getConfig()['netsvr'] as $item) {
+                //将网关的特定参数与公共参数进行合并，网关的特定参数覆盖公共参数
+                $item = array_merge(self::getConfig(), $item);
                 //创建连接对象，并添加到管理器，如果不用这个对象，则不会与netsvr网关进行连接
                 $taskSocket = new TaskSocket(
                     $logPrefix,
                     Log::getFacadeRoot(),
-                    $config['workerAddr'],
-                    $this->netsvrConfig['sendReceiveTimeout'],
-                    $this->netsvrConfig['connectTimeout'],
-                    $config['maxIdleTime']);
+                    $item['workerAddr'],
+                    $item['sendReceiveTimeout'],
+                    $item['connectTimeout'],
+                    $item['maxIdleTime'],
+                    $item['workerHeartbeatMessage'],
+                    $item['heartbeatIntervalMillisecond'],
+                );
                 $taskSocketManger->addSocket($taskSocket);
             }
             return $taskSocketManger;
@@ -123,23 +126,6 @@ class NetBusServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //swoole驱动的Octane，则启动定时器，每隔n秒向网关的worker服务器发送心跳消息
-        if (!class_exists('\Laravel\Octane\Facades\Octane') || config('octane.server', '') !== 'swoole') {
-            return;
-        }
-        Octane::tick(__CLASS__, function () {
-            /**
-             * @var TaskSocketMangerInterface $taskSocketManger
-             */
-            $taskSocketManger = $this->app->get(TaskSocketMangerInterface::class);
-            foreach ($taskSocketManger->getSockets() as $taskSocket) {
-                if ($taskSocket->isConnected()) {
-                    $taskSocket->send($this->netsvrConfig['workerHeartbeatMessage']);
-                } else {
-                    $taskSocket->connect();
-                }
-            }
-        })->seconds($this->netsvrConfig['heartbeatIntervalMillisecond'] / 1000);
     }
 }
 ```
@@ -180,7 +166,7 @@ use NetsvrBusiness\Workerman\MainSocket;
 use NetsvrBusiness\MainSocketManager;
 use NetsvrBusiness\NetBus;
 use NetsvrBusiness\Socket;
-use NetsvrBusiness\Workerman\TaskSocket;
+use NetsvrBusiness\TaskSocket;
 use NetsvrBusiness\TaskSocketManger;
 use Psr\Container\ContainerInterface;
 use Webman\Bootstrap;
@@ -217,7 +203,7 @@ class NetsvrBootstrap implements Bootstrap
             //business进程向网关的worker服务器发送的心跳消息，这个字符串与网关的worker服务器的配置要一致，如果错误，网关的worker服务器是会强制关闭连接的
             'workerHeartbeatMessage' => '~6YOt5rW35piO~',
             //维持心跳的间隔时间，单位毫秒
-            'heartbeatIntervalMillisecond' => 25 * 1000,
+            'heartbeatIntervalMillisecond' => 45 * 1000,
         ];
     }
 

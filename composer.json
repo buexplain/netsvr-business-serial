@@ -38,7 +38,8 @@
     "phpunit/phpunit": "^10.0",
     "phrity/websocket": "^v3.0",
     "workerman/workerman": "^4.1",
-    "ext-pcntl": "*"
+    "ext-pcntl": "*",
+    "swoole/ide-helper": "@dev"
   },
   "scripts": {
     "test": "phpunit --configuration phpunit.xml --log-events-verbose-text phpunit.log"
