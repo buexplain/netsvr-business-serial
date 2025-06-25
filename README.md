@@ -52,6 +52,7 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Octane\Facades\Octane;
 use NetsvrBusiness\Container;
 use NetsvrBusiness\Contract\TaskSocketMangerInterface;
 use NetsvrBusiness\TaskSocket;
@@ -74,7 +75,7 @@ class NetBusServiceProvider extends ServiceProvider
                 //第一台机器的网关的worker服务器的信息
                 [
                     //网关的worker服务器地址
-                    'workerAddr' => '127.0.0.1:6061',
+                    'workerAddr' => '192.168.71.80:6061',
                     //最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
                     'maxIdleTime' => 117,
                 ]
@@ -83,6 +84,10 @@ class NetBusServiceProvider extends ServiceProvider
             'sendReceiveTimeout' => 5,
             //连接到服务端超时，单位秒
             'connectTimeout' => 5,
+            //business进程向网关的worker服务器发送的心跳消息，这个字符串与网关的worker服务器的配置要一致，如果错误，网关的worker服务器是会强制关闭连接的
+            'workerHeartbeatMessage' => '~6YOt5rW35piO~',
+            //维持心跳的间隔时间，单位毫秒
+            'heartbeatIntervalMillisecond' => 4 * 1000,
         ];
     }
 
@@ -118,6 +123,23 @@ class NetBusServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        //swoole驱动的Octane，则启动定时器，每隔n秒向网关的worker服务器发送心跳消息
+        if (!class_exists('\Laravel\Octane\Facades\Octane') || config('octane.server', '') !== 'swoole') {
+            return;
+        }
+        Octane::tick(__CLASS__, function () {
+            /**
+             * @var TaskSocketMangerInterface $taskSocketManger
+             */
+            $taskSocketManger = $this->app->get(TaskSocketMangerInterface::class);
+            foreach ($taskSocketManger->getSockets() as $taskSocket) {
+                if ($taskSocket->isConnected()) {
+                    $taskSocket->send($this->netsvrConfig['workerHeartbeatMessage']);
+                } else {
+                    $taskSocket->connect();
+                }
+            }
+        })->seconds($this->netsvrConfig['heartbeatIntervalMillisecond'] / 1000);
     }
 }
 ```
