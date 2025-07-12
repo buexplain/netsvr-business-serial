@@ -4,33 +4,27 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "64a9681b6c77ffb8f6ba07b664223c3e",
+    "content-hash": "b659f35a20485b10a2fbcf307aba0796",
     "packages": [
         {
             "name": "buexplain/netsvr-protocol-php",
-            "version": "v5.0.0",
+            "version": "v5.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/buexplain/netsvr-protocol-php.git",
-                "reference": "d3752171560ec9a5907292d47bfce9b4874a0b90"
+                "reference": "1a15489b032bc733bf001570eaa0915671c24952"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/buexplain/netsvr-protocol-php/zipball/d3752171560ec9a5907292d47bfce9b4874a0b90",
-                "reference": "d3752171560ec9a5907292d47bfce9b4874a0b90",
-                "shasum": "",
-                "mirrors": [
-                    {
-                        "url": "https://mirrors.aliyun.com/composer/dists/%package%/%reference%.%type%",
-                        "preferred": true
-                    }
-                ]
+                "url": "https://api.github.com/repos/buexplain/netsvr-protocol-php/zipball/1a15489b032bc733bf001570eaa0915671c24952",
+                "reference": "1a15489b032bc733bf001570eaa0915671c24952",
+                "shasum": ""
             },
             "require": {
                 "php": ">=8.0"
             },
             "require-dev": {
-                "buexplain/netsvr-protocol": "^v5.0.0"
+                "buexplain/netsvr-protocol": "^v5.1.0"
             },
             "type": "library",
             "autoload": {
@@ -51,9 +45,9 @@
             "description": "https://github.com/buexplain/netsvr-protocol生成的php版本",
             "support": {
                 "issues": "https://github.com/buexplain/netsvr-protocol-php/issues",
-                "source": "https://github.com/buexplain/netsvr-protocol-php/tree/v5.0.0"
+                "source": "https://github.com/buexplain/netsvr-protocol-php/tree/v5.1.0"
             },
-            "time": "2025-02-13T11:19:13+00:00"
+            "time": "2025-07-10T15:18:59+00:00"
         },
         {
             "name": "psr/container",

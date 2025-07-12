@@ -22,6 +22,8 @@ HandlePattern = "/netsvr"
 AllowOrigin = []
 # websocket服务器读取客户端连接的超时时间，该时间段内，客户端连接没有发消息过来，则会超时，连接会被关闭，所以客户端连接必须在该时间间隔内发送心跳字符串
 ReadDeadline = "120s"
+# websocket服务器写入客户端连接的超时时间，该时间段内，没发送成功连接会被关闭
+SendDeadline = "1s"
 # 最大连接数，超过的会被拒绝
 MaxOnlineNum = 100000
 # io模式，0：IOModNonBlocking，1：IOModBlocking，2：IOModMixed，详细见：https://github.com/lesismal/nbio
@@ -32,13 +34,24 @@ MaxBlockingOnline = 10000
 ReceivePackLimit = 2097152
 # 往websocket连接写入时的消息类型，1：TextMessage，2：BinaryMessage
 SendMessageType = 1
-# 回调脚本文件，如果需要，最好配置绝对路径，不需要，请配置为空字符串
-CallbackScriptFile = "callback.go"
+# 连接打开与关闭的回调接口，如果没有，则不需要配置，否则会发送http的post调用，header头是application/x-protobuf，具体请求参数与返回要求，请参考internal/customer/callback/callback.go
+OnOpenCallbackApi = "http://127.0.0.1:6636/onopen"
+OnCloseCallbackApi = "http://127.0.0.1:6636/onclose"
+# 连接打开与关闭的回调接口超时时间
+CallbackApiDeadline = "3s"
 # tls配置
 TLSCert = ""
 TLSKey = ""
 # 心跳字符串，客户端连接必须定时发送该字符串，用于维持心跳
 HeartbeatMessage = "~6YOt5rW35piO~"
+# 压缩级别，区间是：[-2,9]，0表示不压缩，具体见https://golang.org/pkg/compress/flate/
+CompressionLevel = 1
+# 固定窗口限流器的窗口大小
+LimitWindowSize = "1s"
+# 固定窗口限流器的窗口允许的最大请求数
+LimitWindowMaxRequests = 100
+# 固定窗口限流器的第0个窗口允许的最大请求数
+LimitZeroWindowMaxRequests = 1000
 
 #业务进程的tcp服务器配置
 [Worker]
@@ -46,7 +59,7 @@ HeartbeatMessage = "~6YOt5rW35piO~"
 ListenAddress = "127.0.0.1:6071"
 # worker读取business连接的超时时间，该时间段内，business连接没有发消息过来，则会超时，连接会被关闭
 ReadDeadline = "120s"
-# worker发送给business连接的超时时间，该时间段内，没发送成功，business连接会被关闭
+# worker发送给business连接的超时时间，该时间段内，没发送成功且有部分写入，则business连接会被关闭
 SendDeadline = "10s"
 # business发送数据的大小限制（单位：字节），business发送了超过该限制的包，则连接会被关闭
 ReceivePackLimit = 2097152
@@ -54,6 +67,8 @@ ReceivePackLimit = 2097152
 ReadBufferSize = 4096
 # worker发送给business的缓通道大小
 SendChanCap = 1024
+# worker发送给business的缓通道写入超时，默认是100毫秒，超过该时间还没写入，则丢弃消息并统计worker到business的失败次数
+SendChanDeadline = "100ms"
 # 心跳字符串，客户端连接必须定时发送该字符串，用于维持心跳
 HeartbeatMessage = "~6YOt5rW35piO~"
 
@@ -65,9 +80,12 @@ HeartbeatMessage = "~6YOt5rW35piO~"
 # 3：统计客户连接的心跳次数
 # 4：统计客户数据转发到worker的次数
 # 5：统计客户数据转发到worker的字节数
-# 6：统计往客户写入数据次数
-# 7：统计往客户写入字节数
+# 6：统计往客户写入数据成功次数
+# 7：统计往客户写入数据成功字节数
 # 8：统计连接打开的限流次数
 # 9：统计客户消息限流次数
 # 10：统计worker到business的失败次数
-Item = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+# 11：统计往客户写入数据失败次数
+# 12：统计往客户写入数据失败字节数
+# 13：统计连接消息限流次数
+Item = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
