@@ -80,7 +80,6 @@ function onclose(): void
     $cp = new ConnClose();
     $cp->mergeFromString($protobuf);
     logger('conn close: ' . $cp->serializeToJsonString());
-    header('Content-Type: application/x-protobuf');
     http_response_code(204);
 }
 
