@@ -72,8 +72,8 @@ class NetBusServiceProvider extends ServiceProvider
             //如果一台网关服务机器承载不了业务的websocket连接数，可以再部署一台网关服务机器，这里支持配置多个网关服务，处理多个网关服务的websocket消息
             'netsvr' => [
                 [
-                    //netsvr网关的worker服务器监听的tcp地址
-                    'workerAddr' => '127.0.0.1:6061',
+                    //netsvr网关的task服务器监听的tcp地址
+                    'taskAddr' => '127.0.0.1:6062',
                 ],
             ],
             //taskSocket的最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
@@ -82,8 +82,8 @@ class NetBusServiceProvider extends ServiceProvider
             'sendReceiveTimeout' => 5,
             //连接到网关的超时时间，单位秒
             'connectTimeout' => 5,
-            //business进程向网关的worker服务器发送的心跳消息，这个字符串与网关的worker服务器的配置要一致，如果错误，网关的worker服务器是会强制关闭连接的
-            'workerHeartbeatMessage' => '~6YOt5rW35piO~',
+            //business进程向网关的task服务器发送的心跳消息，这个字符串与网关的task服务器的配置要一致，如果错误，网关的task服务器是会强制关闭连接的
+            'taskHeartbeatMessage' => '~6YOt5rW35piO~',
             //维持心跳的间隔时间，单位毫秒
             'heartbeatIntervalMillisecond' => 45 * 1000,
         ];
@@ -107,11 +107,11 @@ class NetBusServiceProvider extends ServiceProvider
                 $taskSocket = new TaskSocket(
                     $logPrefix,
                     Log::getFacadeRoot(),
-                    $item['workerAddr'],
+                    $item['taskAddr'],
                     $item['sendReceiveTimeout'],
                     $item['connectTimeout'],
                     $item['maxIdleTime'],
-                    $item['workerHeartbeatMessage'],
+                    $item['taskHeartbeatMessage'],
                     $item['heartbeatIntervalMillisecond'],
                 );
                 $taskSocketManger->addSocket($taskSocket);
@@ -134,6 +134,7 @@ class NetBusServiceProvider extends ServiceProvider
 
 ```php
 <?php
+
 /**
  * Copyright 2023 buexplain@qq.com
  *
@@ -174,6 +175,12 @@ use Workerman\Worker;
 use support\Log;
 use NetsvrProtocol\Event;
 
+/**
+ * netsvr网关的启动类
+ * 必须配置到config/bootstrap.php中
+ * 至于是跟随webman启动mainSocket，还是自定义进程中启动mainSocket，则请结合业务自便
+ * 具体看方法：initMainSocketManagerInterface
+ */
 class NetsvrBootstrap implements Bootstrap
 {
     /**
@@ -188,8 +195,8 @@ class NetsvrBootstrap implements Bootstrap
                 [
                     //netsvr网关的worker服务器监听的tcp地址
                     'workerAddr' => '127.0.0.1:6061',
-                    //该参数表示接下来，需要网关服务的worker服务器开启多少协程来处理mainSocket连接的请求
-                    'processCmdGoroutineNum' => 25,
+                    //netsvr网关的task服务器监听的tcp地址
+                    'taskAddr' => '127.0.0.1:6062',
                     //该参数表示接下来，需要网关服务的worker服务器转发如下事件给到business进程的mainSocket连接
                     'events' => Event::OnOpen | Event::OnClose | Event::OnMessage,
                 ],
@@ -202,6 +209,8 @@ class NetsvrBootstrap implements Bootstrap
             'connectTimeout' => 5,
             //business进程向网关的worker服务器发送的心跳消息，这个字符串与网关的worker服务器的配置要一致，如果错误，网关的worker服务器是会强制关闭连接的
             'workerHeartbeatMessage' => '~6YOt5rW35piO~',
+            //business进程向网关的task服务器发送的心跳消息，这个字符串与网关的task服务器的配置要一致，如果错误，网关的task服务器是会强制关闭连接的
+            'taskHeartbeatMessage' => '~6YOt5rW35piO~',
             //维持心跳的间隔时间，单位毫秒
             'heartbeatIntervalMillisecond' => 45 * 1000,
         ];
@@ -221,11 +230,8 @@ class NetsvrBootstrap implements Bootstrap
         $container = Container::getInstance();
         //初始化taskSocketManger，在此之后，webman进程、命令行进程、定时任务进程、自定义进程，都可以用NetBus类与netsvr网关交互
         self::initTaskSocketMangerInterface($container);
-        //跟随webman启动，换句话说就是，在webman进程中，启动了n条tcp客户端连接到n个netsvr网关，并接收到n个netsvr网关转发过来的websocket事件
-        //如果想在自定义进程中启动，则把name判断等于'自定义进程名字'即可
-        if ($worker && $worker->name === 'webman') {
-            self::initMainSocketManagerInterface($container);
-        }
+        //初始化mainSocketManger
+        self::initMainSocketManagerInterface($container, $worker);
         //注册worker停止的回调，在worker停止时，先关闭mainSocket，再关闭taskSocket
         if ($worker) {
             $oldCallback = $worker->onWorkerStop;
@@ -261,11 +267,11 @@ class NetsvrBootstrap implements Bootstrap
                 $taskSocket = new TaskSocket(
                     $logPrefix,
                     Log::channel(),
-                    $item['workerAddr'],
+                    $item['taskAddr'],
                     $item['sendReceiveTimeout'],
                     $item['connectTimeout'],
                     $item['maxIdleTime'],
-                    $item['workerHeartbeatMessage'],
+                    $item['taskHeartbeatMessage'],
                     $item['heartbeatIntervalMillisecond'],
                 );
                 $taskSocketManger->addSocket($taskSocket);
@@ -277,11 +283,16 @@ class NetsvrBootstrap implements Bootstrap
     /**
      * 初始化mainSocket，初始化成功后，会接收到来自netsvr网关转发过来的websocket事件，可以实现服务端、客户端双向互发消息
      * @param Container $container
+     * @param null|Worker $worker
      * @return void
-     * @throws Exception
      */
-    public static function initMainSocketManagerInterface(ContainerInterface $container): void
+    public static function initMainSocketManagerInterface(ContainerInterface $container, ?Worker $worker): void
     {
+        //跟随webman启动，换句话说就是，在webman进程中，启动了n条tcp客户端连接到n个netsvr网关，并接收到n个netsvr网关转发过来的websocket事件
+        //如果想在自定义进程中启动，则把name判断等于“自定义进程名字”即可
+        if (!$worker || $worker->name !== 'webman') {
+            return;
+        }
         $mainSocketManager = new MainSocketManager();
         $logPrefix = sprintf('MainSocket#%d', getmypid());
         $event = self::getEvent();
@@ -300,11 +311,12 @@ class NetsvrBootstrap implements Bootstrap
                 $logPrefix,
                 Log::channel(),
                 $event,
+                $item['events'],
                 $socket,
                 $item['workerHeartbeatMessage'],
-                $item['events'],
-                $item['processCmdGoroutineNum'],
-                $item['heartbeatIntervalMillisecond']);
+                $item['heartbeatIntervalMillisecond'],
+                $worker::$globalEvent,
+            );
             //添加到管理器
             $mainSocketManager->addSocket($mainSocket);
         }
@@ -328,7 +340,7 @@ class NetsvrBootstrap implements Bootstrap
              */
             public function onOpen(ConnOpen $connOpen): void
             {
-//                Log::channel()->info('onOpen ' . $connOpen->serializeToJsonString());
+                Log::channel()->info('onOpen ' . $connOpen->serializeToJsonString());
             }
 
             /**
@@ -349,7 +361,7 @@ class NetsvrBootstrap implements Bootstrap
              */
             public function onClose(ConnClose $connClose): void
             {
-//                Log::channel()->info('onClose ' . $connClose->serializeToJsonString());
+                Log::channel()->info('onClose ' . $connClose->serializeToJsonString());
             }
         };
     }

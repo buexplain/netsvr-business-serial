@@ -19,6 +19,7 @@ declare(strict_types=1);
 
 namespace NetsvrBusiness;
 
+use Google\Protobuf\Internal\RepeatedField;
 use RuntimeException;
 
 /**
@@ -33,22 +34,21 @@ function milliSleep(int $millisecond): void
 
 /**
  * 将网关的worker服务器监听的地址转为16进制字符串
- * @param string $workerAddr
+ * @param string $addr
  * @return string
  */
-function workerAddrConvertToHex(string $workerAddr) :string
+function addrConvertToHex(string $addr): string
 {
     //将网关地址转为16进制字符串
-    $addr = explode(':', $workerAddr, 2);
+    $addrArr = explode(':', $addr, 2);
     //如果不是ipv4地址，则转换为ipv4地址
-    if (!preg_match('/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/', $addr[0])) {
-        $ipv4 = gethostbyname($addr[0]);
-        if ($ipv4 === $addr[0]) {
-            throw new RuntimeException('gethostbyname failed: ' . $addr[0]);
+    if (!preg_match('/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/', $addrArr[0])) {
+        $ipv4 = gethostbyname($addrArr[0]);
+        if ($ipv4 === $addrArr[0]) {
+            throw new RuntimeException('gethostbyname failed: ' . $addrArr[0]);
         }
-        $addr[0] = $ipv4;
     }
-    return bin2hex(pack('Nn', ip2long($addr[0]), $addr[1]));
+    return bin2hex(pack('Nn', ip2long($addrArr[0]), $addrArr[1]));
 }
 
 /**
@@ -56,7 +56,21 @@ function workerAddrConvertToHex(string $workerAddr) :string
  * @param string $uniqId 网关分配给每个连接的uniqId
  * @return string
  */
-function uniqIdConvertToWorkerAddrAsHex(string $uniqId): string
+function uniqIdConvertToAddrAsHex(string $uniqId): string
 {
     return substr($uniqId, 0, 12);
+}
+
+/**
+ * 将repeatedField转换为数组
+ * @param RepeatedField $repeatedField
+ * @return array
+ */
+function repeatedFieldToArray(RepeatedField $repeatedField): array
+{
+    $ret = [];
+    foreach ($repeatedField as $item) {
+        $ret[] = $item;
+    }
+    return $ret;
 }

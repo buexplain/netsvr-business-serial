@@ -38,7 +38,7 @@ class TaskSocketManger implements TaskSocketMangerInterface
      */
     public function addSocket(TaskSocketInterface $socket): void
     {
-        $this->sockets[workerAddrConvertToHex($socket->getWorkerAddr())] = $socket;
+        $this->sockets[addrConvertToHex($socket->getAddr())] = $socket;
     }
 
     /**
@@ -51,12 +51,12 @@ class TaskSocketManger implements TaskSocketMangerInterface
     }
 
     /**
-     * @param string $workerAddrAsHex
+     * @param string $addrAsHex
      * @return TaskSocketInterface|null
      */
-    public function getSocket(string $workerAddrAsHex): ?TaskSocketInterface
+    public function getSocket(string $addrAsHex): ?TaskSocketInterface
     {
-        return $this->sockets[$workerAddrAsHex] ?? null;
+        return $this->sockets[$addrAsHex] ?? null;
     }
 
     /**

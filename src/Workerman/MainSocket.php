@@ -19,7 +19,6 @@ declare(strict_types=1);
 
 namespace NetsvrBusiness\Workerman;
 
-use Exception;
 use NetsvrProtocol\Cmd;
 use NetsvrProtocol\ConnClose;
 use NetsvrProtocol\ConnOpen;
@@ -28,17 +27,15 @@ use NetsvrProtocol\RegisterResp;
 use NetsvrProtocol\Transfer;
 use NetsvrProtocol\UnRegisterReq;
 use NetsvrProtocol\UnRegisterResp;
-use NetsvrBusiness\Container;
 use NetsvrBusiness\Contract\EventInterface;
 use NetsvrBusiness\Contract\MainSocketInterface;
 use NetsvrBusiness\Contract\SocketInterface;
-use NetsvrBusiness\Contract\TaskSocketMangerInterface;
 use NetsvrBusiness\Exception\RegisterMainSocketException;
 use Psr\Log\LoggerInterface;
 use Throwable;
 use Workerman\Connection\TcpConnection;
 use Workerman\Timer;
-use function NetsvrBusiness\workerAddrConvertToHex;
+use Workerman\Events\EventInterface as EventLoop;
 
 /**
  * 基于Workerman实现的MainSocket，可用于webman框架
@@ -69,15 +66,11 @@ class MainSocket implements MainSocketInterface
     /**
      * @var string business进程向网关的worker服务器发送的心跳消息
      */
-    protected string $workerHeartbeatMessage;
+    protected string $heartbeatMessage;
     /**
      * @var int 业务进程允许网关服务器转发的事件集合，具体的枚举值参考：NetsvrProtocol\Event类
      */
     protected int $events;
-    /**
-     * @var int 希望网关服务开启多少条协程来处理本连接的数据
-     */
-    protected int $processCmdGoroutineNum;
     /**
      * @var string 业务进程向网关发起注册后，网关返回的唯一id，取消注册的时候需要用到
      */
@@ -96,28 +89,37 @@ class MainSocket implements MainSocketInterface
      */
     protected int|bool $timerId = false;
 
+    protected EventLoop $eventLoop;
+
     /**
-     * @throws Exception
+     * @param string $logPrefix 日志前缀
+     * @param LoggerInterface $logger 日志对象
+     * @param EventInterface $event 处理网关worker服务器发送过来的事件的回调对象
+     * @param int $events 业务进程打算接收的事件集合，具体枚举值参考：NetsvrProtocol\Event类
+     * @param SocketInterface $socket 与网关进行连接的socket对象，该对象只在注册过程中使用，注册成功后，会将该对象导出成TcpConnection对象
+     * @param string $heartbeatMessage 业务进程发送给网关服worker务器心跳消息
+     * @param int $heartbeatIntervalMillisecond 业务进程向网关worker服务器发送心跳消息的间隔毫秒数
+     * @param EventLoop $eventLoop workerman的事件循环对象
      */
     public function __construct(
         string          $logPrefix,
         LoggerInterface $logger,
         EventInterface  $event,
-        SocketInterface $socket,
-        string          $workerHeartbeatMessage,
         int             $events,
-        int             $processCmdGoroutineNum,
+        SocketInterface $socket,
+        string          $heartbeatMessage,
         int             $heartbeatIntervalMillisecond,
+        EventLoop       $eventLoop,
     )
     {
         $this->logPrefix = strlen($logPrefix) > 0 ? trim($logPrefix) . ' ' : '';
         $this->logger = $logger;
         $this->event = $event;
         $this->socket = $socket;
-        $this->workerHeartbeatMessage = $workerHeartbeatMessage;
+        $this->heartbeatMessage = $heartbeatMessage;
         $this->events = $events;
-        $this->processCmdGoroutineNum = $processCmdGoroutineNum;
         $this->heartbeatIntervalMillisecond = $heartbeatIntervalMillisecond;
+        $this->eventLoop = $eventLoop;
     }
 
     /**
@@ -130,9 +132,9 @@ class MainSocket implements MainSocketInterface
         $this->connection->send($data);
     }
 
-    public function getWorkerAddr(): string
+    public function getAddr(): string
     {
-        return $this->socket->getWorkerAddr();
+        return $this->socket->getAddr();
     }
 
     public function connect(): bool
@@ -149,7 +151,6 @@ class MainSocket implements MainSocketInterface
         try {
             $req = new RegisterReq();
             $req->setEvents($this->events);
-            $req->setProcessCmdGoroutineNum($this->processCmdGoroutineNum);
             if (!$this->socket->send(pack('N', Cmd::Register) . $req->serializeToString())) {
                 return false;
             }
@@ -159,17 +160,17 @@ class MainSocket implements MainSocketInterface
             }
             $resp = new RegisterResp();
             $resp->mergeFromString(substr($data, 4));
-            if ($resp->getCode() == 0) {
+            if ($resp->getCode() == 0 && $resp->getConnId() !== '') {
                 $this->connId = $resp->getConnId();
                 //将socket转为TcpConnection对象
                 $this->convertSocketToTcpConnection();
-                $this->logger->info(sprintf($this->logPrefix . 'register to %s ok.', $this->socket->getWorkerAddr()));
+                $this->logger->info(sprintf($this->logPrefix . 'register to %s ok.', $this->socket->getAddr()));
                 return true;
             }
             throw new RegisterMainSocketException($resp->getMessage(), $resp->getCode());
         } catch (Throwable $throwable) {
             $this->logger->error(sprintf($this->logPrefix . 'register to %s failed.%s%s',
-                $this->socket->getWorkerAddr(),
+                $this->socket->getAddr(),
                 PHP_EOL,
                 self::formatExp($throwable)
             ));
@@ -185,7 +186,7 @@ class MainSocket implements MainSocketInterface
             }
             $this->timerId = Timer::add($this->heartbeatIntervalMillisecond / 1000, function () {
                 if ($this->connection instanceof TcpConnection && $this->connection->getStatus() === TcpConnection::STATUS_ESTABLISHED) {
-                    $this->connection->send($this->workerHeartbeatMessage);
+                    $this->connection->send($this->heartbeatMessage);
                 }
             });
         }
@@ -203,20 +204,12 @@ class MainSocket implements MainSocketInterface
         try {
             $req = new UnRegisterReq();
             $req->setConnId($this->connId);
-            /**
-             * @var $taskSocketManger TaskSocketMangerInterface
-             */
-            $taskSocketManger = Container::getInstance()->get(TaskSocketMangerInterface::class);
-            $socket = $taskSocketManger->getSocket(workerAddrConvertToHex($this->socket->getWorkerAddr()));
-            if (!$socket) {
-                return false;
-            }
             $data = pack('N', Cmd::Unregister) . $req->serializeToString();
-            if (!$socket->send($data)) {
+            if (!$this->socket->send($data)) {
                 return false;
             }
             for ($i = 0; $i < 3; $i++) {
-                $ret = $socket->receive();
+                $ret = $this->socket->receive();
                 if ($ret === false) {
                     return false;
                 }
@@ -231,11 +224,11 @@ class MainSocket implements MainSocketInterface
             $resp = new UnRegisterResp();
             $resp->mergeFromString(substr($ret, 4));
             $this->connId = '';
-            $this->logger->info(sprintf($this->logPrefix . 'unregister to %s ok.', $this->socket->getWorkerAddr()));
+            $this->logger->info(sprintf($this->logPrefix . 'unregister to %s ok.', $this->socket->getAddr()));
             return true;
         } catch (Throwable $throwable) {
             $this->logger->error(sprintf($this->logPrefix . 'unregister to %s failed.%s%s',
-                $this->socket->getWorkerAddr(),
+                $this->socket->getAddr(),
                 PHP_EOL,
                 self::formatExp($throwable)
             ));
@@ -267,7 +260,7 @@ class MainSocket implements MainSocketInterface
     protected function convertSocketToTcpConnection(): void
     {
         $this->closeTcpConnection();
-        $this->connection = new TcpConnection($this->socket->getSocket(), $this->socket->getWorkerAddr());
+        $this->connection = new TcpConnection($this->eventLoop, $this->socket->getSocket(), $this->socket->getAddr());
         $this->connection->protocol = LengthProtocol::class;
         $this->connection->onMessage = function (TcpConnection $connection, $data) {
             $this->onMessage($data);

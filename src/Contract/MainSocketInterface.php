@@ -67,5 +67,5 @@ interface MainSocketInterface
      * 返回当前连接的netsvr网关的worker服务器监听的tcp地址
      * @return string
      */
-    public function getWorkerAddr(): string;
+    public function getAddr(): string;
 }

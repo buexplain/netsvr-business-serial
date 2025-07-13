@@ -23,6 +23,7 @@ use NetsvrBusiness\Contract\TaskSocketInterface;
 use Psr\Log\LoggerInterface;
 use Workerman\Timer as WorkermanTimer;
 use Swoole\Timer as SwooleTimer;
+use Workerman\Worker;
 
 /**
  * 与网关连接的任务socket，用于：
@@ -42,13 +43,13 @@ class TaskSocket extends Socket implements TaskSocketInterface
     protected int $heartbeatIntervalMillisecond;
 
     /**
-     * @var string business进程向网关的worker服务器发送的心跳消息
+     * @var string business进程向网关的task服务器发送的心跳消息
      */
-    protected string $workerHeartbeatMessage;
+    protected string $heartbeatMessage;
 
     /**
-     * 最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
-     * 这段时间内，连接没有被使用过，则会认为连接已经被网关的worker服务器关闭
+     * 最大闲置时间，单位秒，建议比netsvr网关的task服务器的ReadDeadline配置小3秒
+     * 这段时间内，连接没有被使用过，则会认为连接已经被网关的task服务器关闭
      * 此后再使用连接，会丢弃当前连接，创建新的连接
      * @var int
      */
@@ -63,27 +64,27 @@ class TaskSocket extends Socket implements TaskSocketInterface
     /**
      * @param string $logPrefix 日志前缀
      * @param LoggerInterface $logger
-     * @param string $workerAddr netsvr网关的worker服务器监听的tcp地址
+     * @param string $addr netsvr网关的task服务器监听的tcp地址
      * @param int $sendReceiveTimeout 读写数据超时，单位秒
      * @param int $connectTimeout 连接到服务端超时，单位秒
-     * @param int $maxIdleTime 最大闲置时间，单位秒，建议比netsvr网关的worker服务器的ReadDeadline配置小3秒
-     * @param string $workerHeartbeatMessage business进程向网关的worker服务器发送的心跳消息
+     * @param int $maxIdleTime 最大闲置时间，单位秒，建议比netsvr网关的task服务器的ReadDeadline配置小3秒
+     * @param string $heartbeatMessage business进程向网关的task服务器发送的心跳消息
      * @param int $heartbeatIntervalMillisecond 与网关维持心跳的间隔毫秒数
      */
     public function __construct(
         string          $logPrefix,
         LoggerInterface $logger,
-        string          $workerAddr,
+        string          $addr,
         int             $sendReceiveTimeout,
         int             $connectTimeout,
         int             $maxIdleTime,
-        string          $workerHeartbeatMessage,
+        string          $heartbeatMessage,
         int             $heartbeatIntervalMillisecond,
     )
     {
-        parent::__construct($logPrefix, $logger, $workerAddr, $sendReceiveTimeout, $connectTimeout);
+        parent::__construct($logPrefix, $logger, $addr, $sendReceiveTimeout, $connectTimeout);
         $this->maxIdleTime = $maxIdleTime;
-        $this->workerHeartbeatMessage = $workerHeartbeatMessage;
+        $this->heartbeatMessage = $heartbeatMessage;
         $this->heartbeatIntervalMillisecond = $heartbeatIntervalMillisecond;
     }
 
@@ -112,9 +113,12 @@ class TaskSocket extends Socket implements TaskSocketInterface
         }
         //优先兼容workerman，因为workerman的定时器可能来自于swoole，所以优先兼容workerman
         if (class_exists('\Workerman\Timer')) {
+            if (!Worker::getAllWorkers()) {
+                return;
+            }
             $this->timerId = WorkermanTimer::add($this->heartbeatIntervalMillisecond / 1000, function () {
                 if ($this->isConnected()) {
-                    if (!$this->send($this->workerHeartbeatMessage)) {
+                    if (!$this->send($this->heartbeatMessage)) {
                         $this->connect();
                     }
                 }
@@ -123,7 +127,7 @@ class TaskSocket extends Socket implements TaskSocketInterface
             //兼容laravel-octane的swoole驱动
             $this->timerId = SwooleTimer::tick($this->heartbeatIntervalMillisecond, function () {
                 if ($this->isConnected()) {
-                    if (!$this->send($this->workerHeartbeatMessage)) {
+                    if (!$this->send($this->heartbeatMessage)) {
                         $this->connect();
                     }
                 }

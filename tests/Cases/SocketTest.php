@@ -28,7 +28,7 @@ class SocketTest extends TestCase
 {
     protected static function getSocket(): SocketInterface
     {
-        return new Socket(sprintf('TaskSocket#%d', getmypid()), new NullLogger(), '127.0.0.1:6071', 5, 5);
+        return new Socket(sprintf('TaskSocket#%d', getmypid()), new NullLogger(), '127.0.0.1:6072', 5, 5);
     }
 
     /**
@@ -49,9 +49,9 @@ class SocketTest extends TestCase
     public function testSend()
     {
         $socket = $this->getSocket();
-        $this->assertFalse($socket->send(NetBusTestAbstract::WORKER_HEARTBEAT_MESSAGE));
+        $this->assertFalse($socket->send(NetBusTestAbstract::TASK_HEARTBEAT_MESSAGE));
         $socket->connect();
-        $this->assertTrue($socket->send(NetBusTestAbstract::WORKER_HEARTBEAT_MESSAGE));
+        $this->assertTrue($socket->send(NetBusTestAbstract::TASK_HEARTBEAT_MESSAGE));
     }
 
     /**

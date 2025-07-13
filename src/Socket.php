@@ -41,10 +41,10 @@ class Socket implements SocketInterface
     protected LoggerInterface $logger;
 
     /**
-     * netsvr网关的worker服务器监听的tcp地址
+     * netsvr网关的worker、task服务器监听的tcp地址
      * @var string
      */
-    protected string $workerAddr;
+    protected string $addr;
     /***
      * 读写数据超时，单位秒
      * @var int
@@ -75,21 +75,21 @@ class Socket implements SocketInterface
     /**
      * @param string $logPrefix
      * @param LoggerInterface $logger
-     * @param string $workerAddr netsvr网关的worker服务器监听的tcp地址
+     * @param string $addr netsvr网关的worker服务器监听的tcp地址
      * @param int $sendReceiveTimeout 读写数据超时，单位秒
      * @param int $connectTimeout 连接到服务端超时，单位秒
      */
     public function __construct(
         string          $logPrefix,
         LoggerInterface $logger,
-        string          $workerAddr,
+        string          $addr,
         int             $sendReceiveTimeout,
         int             $connectTimeout,
     )
     {
         $this->logPrefix = strlen($logPrefix) > 0 ? trim($logPrefix) . ' ' : '';
         $this->logger = $logger;
-        $this->workerAddr = $workerAddr;
+        $this->addr = $addr;
         $this->sendReceiveTimeout = $sendReceiveTimeout;
         $this->connectTimeout = $connectTimeout;
     }
@@ -110,9 +110,9 @@ class Socket implements SocketInterface
     /**
      * @return string
      */
-    public function getWorkerAddr(): string
+    public function getAddr(): string
     {
-        return $this->workerAddr;
+        return $this->addr;
     }
 
     /**
@@ -142,7 +142,7 @@ class Socket implements SocketInterface
         } finally {
             $this->socket = null;
             $this->logger->info(sprintf($this->logPrefix . 'close connection %s ok.',
-                $this->workerAddr,
+                $this->addr,
             ));
         }
     }
@@ -154,7 +154,7 @@ class Socket implements SocketInterface
     public function connect(): bool
     {
         try {
-            $socket = @stream_socket_client(sprintf('tcp://%s', $this->workerAddr), $errno, $errMsg, $this->connectTimeout);
+            $socket = @stream_socket_client(sprintf('tcp://%s', $this->addr), $errno, $errMsg, $this->connectTimeout);
             if ($socket === false) {
                 throw new SocketConnectException($errMsg, $errno);
             }
@@ -171,12 +171,12 @@ class Socket implements SocketInterface
             $this->connected = true;
             $this->receiveBuffer = '';
             $this->logger->info(sprintf($this->logPrefix . 'connect to %s ok.',
-                $this->workerAddr,
+                $this->addr,
             ));
             return true;
         } catch (Throwable $throwable) {
             $this->logger->error(sprintf($this->logPrefix . 'connect to %s failed.%s%s',
-                $this->workerAddr,
+                $this->addr,
                 PHP_EOL,
                 self::formatExp($throwable)
             ));
@@ -218,7 +218,7 @@ class Socket implements SocketInterface
         } catch (Throwable $throwable) {
             $this->close();
             $this->logger->error(sprintf($this->logPrefix . 'send to %s failed.%s%s',
-                $this->workerAddr,
+                $this->addr,
                 PHP_EOL,
                 self::formatExp($throwable)
             ));
@@ -288,7 +288,7 @@ class Socket implements SocketInterface
         } catch (Throwable $throwable) {
             $this->close();
             $this->logger->error(sprintf($this->logPrefix . 'receive from %s failed.%s%s',
-                $this->workerAddr,
+                $this->addr,
                 PHP_EOL,
                 self::formatExp($throwable)
             ));

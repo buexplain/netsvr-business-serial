@@ -23,7 +23,7 @@ use NetsvrBusiness\Contract\MainSocketInterface;
 use NetsvrBusiness\Contract\MainSocketManagerInterface;
 
 /**
- *
+ * 主socket管理器
  */
 class MainSocketManager implements MainSocketManagerInterface
 {
@@ -39,31 +39,12 @@ class MainSocketManager implements MainSocketManagerInterface
     protected bool $status = false;
 
     /**
-     * 返回所有与网关服务器连接的mainSocket对象
-     * @return array|MainSocketInterface[]
-     */
-    public function getSockets(): array
-    {
-        return $this->status ? $this->pool : [];
-    }
-
-    /**
-     * 根据网关的workerAddr获取具体网关的连接，注意这个地址是16进制字符串
-     * @param string $workerAddrAsHex
-     * @return MainSocketInterface|null
-     */
-    public function getSocket(string $workerAddrAsHex): ?MainSocketInterface
-    {
-        return $this->status ? ($this->pool[$workerAddrAsHex] ?? null) : null;
-    }
-
-    /**
      * @param MainSocketInterface $socket
      * @return void
      */
     public function addSocket(MainSocketInterface $socket): void
     {
-        $this->pool[workerAddrConvertToHex($socket->getWorkerAddr())] = $socket;
+        $this->pool[addrConvertToHex($socket->getAddr())] = $socket;
     }
 
     /**

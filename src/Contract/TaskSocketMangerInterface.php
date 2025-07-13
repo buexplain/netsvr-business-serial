@@ -47,9 +47,9 @@ interface TaskSocketMangerInterface
     public function getSockets(): array;
 
     /**
-     * 根据网关的workerAddr获取具体网关的连接，注意这个地址是16进制字符串
-     * @param string $workerAddrAsHex
+     * 根据网关的taskAddr获取具体网关的连接，注意这个地址是16进制字符串
+     * @param string $addrAsHex
      * @return TaskSocketInterface|null
      */
-    public function getSocket(string $workerAddrAsHex): ?TaskSocketInterface;
+    public function getSocket(string $addrAsHex): ?TaskSocketInterface;
 }

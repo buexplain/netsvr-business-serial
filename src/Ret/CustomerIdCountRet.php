@@ -17,29 +17,31 @@
 
 declare(strict_types=1);
 
-namespace NetsvrBusiness\Contract;
+namespace NetsvrBusiness\Ret;
 
-/**
- *
- */
-interface MainSocketManagerInterface
+use NetsvrProtocol\CustomerIdCountResp;
+
+class CustomerIdCountRet
 {
     /**
-     * 添加一个与网关服务器连接的mainSocket对象
-     * @param MainSocketInterface $socket
-     * @return void
+     * key为网关worker服务器地址，value为 CustomerIdCountResp
+     * @var array|array<string,CustomerIdCountResp>|CustomerIdCountResp[]
      */
-    public function addSocket(MainSocketInterface $socket): void;
+    public array $data = array();
 
     /**
-     * 让所有的mainSocket开始与网关进行交互
-     * @return bool
+     * 转为数组
+     * @return array
      */
-    public function start(): bool;
-
-    /**
-     * 关闭所有的mainSocket，不再与网关进行任何交互
-     * @return void
-     */
-    public function close(): void;
+    public function toArray(): array
+    {
+        $ret = array();
+        foreach ($this->data as $addr => $value) {
+            $ret[] = [
+                'addr' => $addr,
+                'count' => $value->getCount(),
+            ];
+        }
+        return $ret;
+    }
 }

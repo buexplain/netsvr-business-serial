@@ -27,24 +27,24 @@ use Workerman\Protocols\ProtocolInterface;
  */
 class LengthProtocol implements ProtocolInterface
 {
-    public static function input($recv_buffer, ConnectionInterface $connection)
+    public static function input(string $buffer, ConnectionInterface $connection): int
     {
-        if (strlen($recv_buffer) < 4) {
+        if (strlen($buffer) < 4) {
             return 0;
         }
-        $prefix = unpack('N', $recv_buffer);
+        $prefix = unpack('N', $buffer);
         return $prefix[1] + 4;
     }
 
     /**
-     * @param $recv_buffer
+     * @param string $buffer
      * @param ConnectionInterface $connection
      * @return array
      */
-    public static function decode($recv_buffer, ConnectionInterface $connection): array
+    public static function decode(string $buffer, ConnectionInterface $connection): array
     {
-        $cmd = unpack('N', substr($recv_buffer, 4, 4));
-        $protobuf = substr($recv_buffer, 8);
+        $cmd = unpack('N', substr($buffer, 4, 4));
+        $protobuf = substr($buffer, 8);
         return ['cmd' => $cmd[1], 'protobuf' => $protobuf];
     }
 

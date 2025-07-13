@@ -33,7 +33,7 @@ interface SocketInterface
     /**
      * @return string
      */
-    public function getWorkerAddr(): string;
+    public function getAddr(): string;
 
     /**
      * 判断连接是否正常

@@ -1,0 +1,61 @@
+<?php
+/**
+ * Copyright 2023 buexplain@qq.com
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+declare(strict_types=1);
+
+namespace NetsvrBusiness\Ret;
+
+use NetsvrProtocol\UniqIdCountResp;
+
+class UniqIdCountRet
+{
+    /**
+     * key为网关worker服务器地址，value为 UniqIdCountResp
+     * @var array|array<string,UniqIdCountResp>|UniqIdCountResp[]
+     */
+    public array $data = array();
+
+    /**
+     * 获取总计数
+     * @return int
+     */
+    public function getCount(): int
+    {
+
+        $ret = 0;
+        foreach ($this->data as $item) {
+            $ret += $item->getCount();
+        }
+        return $ret;
+    }
+
+    /**
+     * 转为数组
+     * @return array
+     */
+    public function toArray(): array
+    {
+        $ret = [];
+        foreach ($this->data as $addr => $item) {
+            $ret[] = [
+                'addr' => $addr,
+                'count' => $item->getCount(),
+            ];
+        }
+        return $ret;
+    }
+}
