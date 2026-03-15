@@ -60,7 +60,7 @@ class MainSocketManager implements MainSocketManagerInterface
         $connectOk = [];
         foreach ($this->pool as $socket) {
             if ($socket->connect()) {
-                $connectOk[] = $connectOk;
+                $connectOk[] = $socket;
             } else {
                 //关闭所有已经连接成功的socket
                 foreach ($connectOk as $ok) {
@@ -73,7 +73,7 @@ class MainSocketManager implements MainSocketManagerInterface
         $registerOk = [];
         foreach ($this->pool as $socket) {
             if ($socket->register()) {
-                $registerOk[] = $registerOk;
+                $registerOk[] = $socket;
             } else {
                 //关闭所有已经注册成功的socket
                 foreach ($registerOk as $ok) {
