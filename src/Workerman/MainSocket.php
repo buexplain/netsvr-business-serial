@@ -26,16 +26,18 @@ use NetsvrProtocol\RegisterReq;
 use NetsvrProtocol\RegisterResp;
 use NetsvrProtocol\Transfer;
 use NetsvrProtocol\UnRegisterReq;
-use NetsvrProtocol\UnRegisterResp;
 use NetsvrBusiness\Contract\EventInterface;
 use NetsvrBusiness\Contract\MainSocketInterface;
 use NetsvrBusiness\Contract\SocketInterface;
 use NetsvrBusiness\Exception\RegisterMainSocketException;
 use Psr\Log\LoggerInterface;
+use ReflectionClass;
+use ReflectionException;
 use Throwable;
 use Workerman\Connection\TcpConnection;
 use Workerman\Timer;
 use Workerman\Events\EventInterface as EventLoop;
+use Workerman\Worker;
 
 /**
  * 基于Workerman实现的MainSocket，可用于webman框架
@@ -205,26 +207,10 @@ class MainSocket implements MainSocketInterface
             $req = new UnRegisterReq();
             $req->setConnId($this->connId);
             $data = pack('N', Cmd::Unregister) . $req->serializeToString();
-            if (!$this->socket->send($data)) {
+            $ok = $this->connection->send($data);
+            if (!$ok) {
                 return false;
             }
-            for ($i = 0; $i < 3; $i++) {
-                $ret = $this->socket->receive();
-                if ($ret === false) {
-                    return false;
-                }
-                if ($ret === '') {
-                    continue;
-                }
-                break;
-            }
-            if ($ret === '') {
-                return false;
-            }
-            $resp = new UnRegisterResp();
-            $resp->mergeFromString(substr($ret, 4));
-            $this->connId = '';
-            $this->logger->info(sprintf($this->logPrefix . 'unregister to %s ok.', $this->socket->getAddr()));
             return true;
         } catch (Throwable $throwable) {
             $this->logger->error(sprintf($this->logPrefix . 'unregister to %s failed.%s%s',
@@ -256,12 +242,24 @@ class MainSocket implements MainSocketInterface
     /**
      * 将socket对象转换为TcpConnection对象
      * @return void
+     * @throws ReflectionException
      */
     protected function convertSocketToTcpConnection(): void
     {
         $this->closeTcpConnection();
-        $this->connection = new TcpConnection($this->eventLoop, $this->socket->getSocket(), $this->socket->getAddr());
-        $this->connection->protocol = LengthProtocol::class;
+        //通过反射确定参数个数
+        $tcpConnectionRef = new ReflectionClass(TcpConnection::class);
+        if ($tcpConnectionRef->getConstructor()->getNumberOfParameters() == 2) {
+            $this->connection = $tcpConnectionRef->newInstance($this->socket->getSocket(), $this->socket->getAddr());
+        } else {
+            //workerman5.0之后，参数个数是3
+            $this->connection = $tcpConnectionRef->newInstance($this->eventLoop, $this->socket->getSocket(), $this->socket->getAddr());
+        }
+        if (version_compare(Worker::VERSION, '5.0.0', '<')) {
+            $this->connection->protocol = LengthProtocol::class;
+        } else {
+            $this->connection->protocol = LengthProtocolV5::class;
+        }
         $this->connection->onMessage = function (TcpConnection $connection, $data) {
             $this->onMessage($data);
         };
@@ -290,6 +288,10 @@ class MainSocket implements MainSocketInterface
                     $cc = new ConnClose();
                     $cc->mergeFromString($protobuf);
                     $this->event->onClose($cc);
+                    break;
+                case Cmd::Unregister:
+                    $this->connId = '';
+                    $this->logger->info(sprintf($this->logPrefix . 'unregister to %s ok.', $this->socket->getAddr()));
                     break;
             }
         } catch (Throwable $throwable) {

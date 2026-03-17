@@ -156,24 +156,24 @@ declare(strict_types=1);
 namespace app;
 
 use Exception;
-use NetsvrProtocol\ConnClose;
-use NetsvrProtocol\ConnOpen;
-use NetsvrProtocol\Transfer;
 use NetsvrBusiness\Container;
 use NetsvrBusiness\Contract\EventInterface;
 use NetsvrBusiness\Contract\MainSocketManagerInterface;
 use NetsvrBusiness\Contract\TaskSocketMangerInterface;
-use NetsvrBusiness\Workerman\MainSocket;
-use NetsvrBusiness\MainSocketManager;
 use NetsvrBusiness\NetBus;
 use NetsvrBusiness\Socket;
 use NetsvrBusiness\TaskSocket;
 use NetsvrBusiness\TaskSocketManger;
+use NetsvrBusiness\Workerman\MainSocket;
+use NetsvrBusiness\Workerman\MainSocketManager;
+use NetsvrProtocol\ConnClose;
+use NetsvrProtocol\ConnOpen;
+use NetsvrProtocol\Event;
+use NetsvrProtocol\Transfer;
 use Psr\Container\ContainerInterface;
+use support\Log;
 use Webman\Bootstrap;
 use Workerman\Worker;
-use support\Log;
-use NetsvrProtocol\Event;
 
 /**
  * netsvr网关的启动类
@@ -235,14 +235,14 @@ class NetsvrBootstrap implements Bootstrap
         //注册worker停止的回调，在worker停止时，先关闭mainSocket，再关闭taskSocket
         if ($worker) {
             $oldCallback = $worker->onWorkerStop;
-            $worker->onWorkerStop = function () use ($oldCallback, $container) {
+            $worker->onWorkerStop = function (Worker $worker) use ($oldCallback, $container) {
                 //先关闭mainSocket
                 $container->has(MainSocketManagerInterface::class) && $container->get(MainSocketManagerInterface::class)->close();
                 //再关闭taskSocket
                 $container->has(TaskSocketMangerInterface::class) && $container->get(TaskSocketMangerInterface::class)->close();
                 //最后再执行原来的回调
                 if ($oldCallback) {
-                    $oldCallback();
+                    $oldCallback($worker);
                 }
             };
         }

@@ -17,10 +17,12 @@
 
 declare(strict_types=1);
 
-namespace NetsvrBusiness;
+namespace NetsvrBusiness\Workerman;
 
 use NetsvrBusiness\Contract\MainSocketInterface;
 use NetsvrBusiness\Contract\MainSocketManagerInterface;
+use Workerman\Timer;
+use function NetsvrBusiness\addrConvertToHex;
 
 /**
  * 主socket管理器
@@ -107,9 +109,11 @@ class MainSocketManager implements MainSocketManagerInterface
         foreach ($this->pool as $socket) {
             $socket->unregister();
         }
-        //再关闭socket
-        foreach ($this->pool as $socket) {
-            $socket->close();
-        }
+        Timer::add(2, function () {
+            //等待取消注册，再关闭socket
+            foreach ($this->pool as $socket) {
+                $socket->close();
+            }
+        }, [], false);
     }
 }
