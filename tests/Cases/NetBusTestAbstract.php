@@ -38,6 +38,7 @@ use Psr\Container\NotFoundExceptionInterface;
 use Psr\Log\NullLogger;
 use Throwable;
 use WebSocket\Client;
+use WebSocket\Exception\ConnectionTimeoutException;
 use WebSocket\Middleware\CloseHandler;
 use function NetsvrBusiness\milliSleep;
 use function NetsvrBusiness\repeatedFieldToArray;
@@ -198,6 +199,106 @@ abstract class NetBusTestAbstract extends TestCase
             $up->setNewCustomerId($uniqId . 'CustomerId');
             NetBus::connInfoUpdate($up);
         }
+    }
+
+    /**
+     * 按 uniqId 取测试连接
+     * @param string $uniqId
+     * @return Client
+     */
+    protected function clientOf(string $uniqId): Client
+    {
+        if (!isset(static::$wsClients[$uniqId])) {
+            $this->fail("找不到 uniqId=$uniqId 的测试连接");
+        }
+        return static::$wsClients[$uniqId];
+    }
+
+    /**
+     * 断言连接在给定时间内收不到数据，用读超时判定
+     * @param Client $client
+     * @param float $timeout 秒
+     * @return void
+     */
+    protected function assertNoMessage(Client $client, float $timeout = 0.3): void
+    {
+        $defaultTimeout = $client->getTimeout();
+        $client->setTimeout($timeout);
+        try {
+            $message = $client->receive();
+        } catch (ConnectionTimeoutException) {
+            //预期：读超时，没有数据
+            return;
+        } catch (Throwable $throwable) {
+            $this->fail('读取数据失败：' . $throwable->getMessage());
+            return;
+        } finally {
+            $client->setTimeout($defaultTimeout);
+        }
+        $this->fail('连接不应收到数据，实际收到：' . $message->getContent());
+    }
+
+    /**
+     * 等待这些连接从网关下线；强制关闭是异步的，网关写完关闭帧后还要清理连接
+     * @param array $uniqIds
+     * @param float $timeout 秒
+     * @return void
+     */
+    protected function waitOffline(array $uniqIds, float $timeout = 3.0): void
+    {
+        $deadline = microtime(true) + $timeout;
+        while (true) {
+            $online = NetBus::checkOnline($uniqIds)->getUniqIds();
+            if (empty($online)) {
+                return;
+            }
+            if (microtime(true) > $deadline) {
+                $this->fail('等待连接下线超时，仍在线：' . implode(',', $online));
+            }
+            milliSleep(20);
+        }
+    }
+
+    /**
+     * 给每个连接设置 customerId，用 uniqId 充当以保证唯一
+     * @param array $uniqIds
+     * @return void
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     */
+    protected function setUniqueCustomerId(array $uniqIds): void
+    {
+        foreach ($uniqIds as $uniqId) {
+            $up = new ConnInfoUpdate();
+            $up->setUniqId($uniqId);
+            $up->setNewCustomerId($uniqId);
+            NetBus::connInfoUpdate($up);
+        }
+    }
+
+    /**
+     * 让每个网关各挑一个连接共享同一个 customerId，返回共享的 customerId 与这些连接
+     * @param array $uniqIds
+     * @return array [customerId, uniqIds]
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     */
+    protected function shareCustomerId(array $uniqIds): array
+    {
+        $sharedCustomerId = uniqid('sharedCustomerId');
+        $sharedUniqIds = [];
+        foreach (static::getNetsvrConfig()['netsvr'] as $config) {
+            $addrUniqIds = $this->getDefaultUniqIdsByAddr($config['addr']);
+            if (!isset($addrUniqIds[0])) {
+                continue;
+            }
+            $sharedUniqIds[] = $addrUniqIds[0];
+            $up = new ConnInfoUpdate();
+            $up->setUniqId($addrUniqIds[0]);
+            $up->setNewCustomerId($sharedCustomerId);
+            NetBus::connInfoUpdate($up);
+        }
+        return [$sharedCustomerId, $sharedUniqIds];
     }
 
     /**
@@ -1485,5 +1586,128 @@ abstract class NetBusTestAbstract extends TestCase
         $this->assertSame([], $topicCustomerIdListRet->getTopicCustomerIds('notExistTopic'), "TopicCustomerIdListRet::getTopicCustomerIds 主题不存在应返回空数组");
         $this->assertSame([], $topicCustomerIdToUniqIdsListRet->getTopicCustomerIds('notExistTopic'), "TopicCustomerIdToUniqIdsListRet::getTopicCustomerIds 主题不存在应返回空数组");
         $this->assertSame([], $topicCustomerIdToUniqIdsListRet->getCustomerUniqIds('notExistTopic', 'notExistCustomerId'), "TopicCustomerIdToUniqIdsListRet::getCustomerUniqIds 目标不存在应返回空数组");
+    }
+
+    /**
+     * 目标不存在、目标为空、数据为空时网关会跳过，且不影响同项内的其它目标
+     * composer test -- --filter=testSingleCastBulkSkipInvalidTarget
+     * @return void
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     * @throws Throwable
+     */
+    public function testSingleCastBulkSkipInvalidTarget(): void
+    {
+        //连接到网关
+        $this->resetWsClient();
+        $uniqIds = $this->getDefaultUniqIds();
+        //uniqId 的前 12 个十六进制字符是网关地址，尾部换成不存在的自增 id，
+        //构造一个「落在同一个网关、但连接不存在」的目标
+        $notExistUniqId = substr($uniqIds[0], 0, 12) . 'ffffffffffffffff';
+        $validFirst = $uniqIds[0];
+        $validSecond = $uniqIds[1];
+        $validThird = $uniqIds[2];
+        $dataFirst = uniqid('skipInvalidTarget');
+        $dataSecond = uniqid('skipInvalidTarget');
+        NetBus::singleCastBulk([
+            //不存在的目标与真实目标混在同一项：真实目标照常收到数据
+            (new SingleCastBulkItem())->setUniqIds([$notExistUniqId, $validFirst])->setData([$dataFirst]),
+            //同一项内混入空数据：空数据被跳过，真实数据照常投递
+            (new SingleCastBulkItem())->setUniqIds([$validSecond])->setData([$dataSecond, '']),
+            //目标为空：整项不处理
+            (new SingleCastBulkItem())->setUniqIds([])->setData([uniqid('skipInvalidTarget')]),
+            //数据为空：整项不处理
+            (new SingleCastBulkItem())->setUniqIds([$validThird])->setData([]),
+        ]);
+        //有效的数据被投递
+        $this->assertTrue($dataFirst === $this->clientOf($validFirst)->receive()->getContent(), "不存在的目标影响了同项内的真实目标");
+        $this->assertTrue($dataSecond === $this->clientOf($validSecond)->receive()->getContent(), "空数据影响了同项内的真实数据");
+        //目标为空、数据为空的项不应投递任何数据，不存在的目标也不影响其它连接
+        $this->assertNoMessage($this->clientOf($validThird));
+        foreach (static::$wsClients as $uniqId => $client) {
+            if ($uniqId === $validFirst || $uniqId === $validSecond) {
+                continue;
+            }
+            $this->assertNoMessage($client);
+        }
+    }
+
+    /**
+     * 客户端收到关闭帧后既不回关闭帧、也不断开连接，网关仍会在兜底时间到达后关闭连接
+     * composer test -- --filter=testForceOfflineUncooperativeClient
+     * @return void
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     * @throws Throwable
+     */
+    public function testForceOfflineUncooperativeClient(): void
+    {
+        //直接建立连接，不加 CloseHandler 中间件：收到关闭帧时不回关闭帧，也不主动断开 TCP
+        $clients = [];
+        $uniqIds = [];
+        foreach (static::getNetsvrConfig()['netsvr'] as $config) {
+            for ($i = 0; $i < static::NETSVR_ONLINE_NUM; $i++) {
+                $client = new Client($config['ws']);
+                $uniqIds[] = $client->receive()->getContent();
+                $clients[] = $client;
+            }
+        }
+        try {
+            NetBus::forceOffline($uniqIds);
+            foreach ($clients as $client) {
+                $message = $client->receive();
+                $this->assertEquals('close', $message->getOpcode(), '服务端没有写入关闭帧');
+                $status = unpack('n', substr($message->getPayload(), 0, 2));
+                $this->assertEquals(1008, $status[1], '关闭码不符合预期');
+            }
+            //兜底关闭到达后，连接会从网关的在线列表里消失
+            $this->waitOffline($uniqIds, 5.0);
+        } finally {
+            foreach ($clients as $client) {
+                try {
+                    $client->close();
+                    $client->disconnect();
+                } catch (Throwable) {
+                }
+            }
+        }
+    }
+
+    /**
+     * 同一个客户连接到多个网关时，给该客户发数据，各网关上的连接都能收到
+     * composer test -- --filter=testSendToSharedCustomerId
+     * @return void
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     * @throws Throwable
+     */
+    public function testSendToSharedCustomerId(): void
+    {
+        //连接到网关
+        $this->resetWsClient();
+        $uniqIds = $this->getDefaultUniqIds();
+        $this->setUniqueCustomerId($uniqIds);
+        [$sharedCustomerId, $sharedUniqIds] = $this->shareCustomerId($uniqIds);
+        //组播：该客户的全部连接（含跨网关）都收到
+        $message = uniqid('sendToSharedCustomerId');
+        NetBus::sendToCustomerIds([$sharedCustomerId], $message);
+        foreach ($sharedUniqIds as $uniqId) {
+            $this->assertTrue($message === $this->clientOf($uniqId)->receive()->getContent(), "连接 $uniqId 收到的数据不符合预期");
+        }
+        //批量单播：同上
+        $message = uniqid('singleCastBulkBySharedCustomerId');
+        NetBus::singleCastBulkByCustomerId([
+            (new SingleCastBulkByCustomerIdItem())->setCustomerIds([$sharedCustomerId])->setData([$message]),
+        ]);
+        foreach ($sharedUniqIds as $uniqId) {
+            $this->assertTrue($message === $this->clientOf($uniqId)->receive()->getContent(), "连接 $uniqId 收到的数据不符合预期");
+        }
+        //其它客户不应收到数据
+        foreach (static::$wsClients as $uniqId => $client) {
+            if (in_array($uniqId, $sharedUniqIds, true)) {
+                continue;
+            }
+            $this->assertNoMessage($client);
+        }
     }
 }
