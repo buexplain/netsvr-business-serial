@@ -1,11 +1,11 @@
 # 日志级别 debug、info、warn、error
-LogLevel = "debug"
+LogLevel = "info"
 # 日志文件，如果不配置，则输出到控制台，如果配置的是相对地址（不包含盘符或不是斜杠开头），则会自动拼接上进程工作目录的地址，最好配置绝对路径
-#LogFile = "log/netSvr.log"
+LogFile = "log/netSvr.log"
 # 网关收到停止信号后的等待时间，0表示永久等待，否则是超过这个时间还没优雅停止，则会强制退出
 ShutdownWaitTime = "5s"
-# pprof服务器监听的地址，ip:port，这个地址必须是内网地址，外网不允许访问，如果是空字符串，则不会开启，生产环境服务没毛病就别开它
-#PprofListenAddress = "127.0.0.1:6063"
+# github.com/google/gops/agent服务器监听的地址，ip:port，这个地址必须是内网地址，外网不允许访问，如果是空字符串，则不会开启，生产环境服务没问题就别开它
+PprofListenAddress = "127.0.0.1:6083"
 # 测试用，是否开启Autobahn测试
 Autobahn = false
 # 限流器，如果配置是0，则表示不启用限流器
@@ -16,6 +16,11 @@ OnOpen = 10000
 OnMessage = 50000
 # 客户端的websocket服务器配置
 [Customer]
+# github.com/panjf2000/gnet的引擎数量，入参是：[0, 100]
+# 0表示关闭，则gnet会默认创建一个引擎，其余数字表示按逻辑CPU的数量百分比创建引擎
+# 计算公式：int(math.Ceil(float64(runtime.NumCPU()) * (float64(Multicore) / 100)))
+# 例如100，则会创建逻辑CPU数量个引擎
+Multicore = 100
 # 监听的地址，ip:port，这个地址一般是外网地址
 ListenAddress = "127.0.0.1:6080"
 # url路由
@@ -30,11 +35,6 @@ MaxOnlineNum = 100000
 ReceivePackLimit = 2097152
 # 往websocket连接写入时的消息类型，1：TextMessage，2：BinaryMessage
 SendMessageType = 1
-# 连接打开与关闭的回调接口，如果没有，则不需要配置，否则会发送http的post调用，header头是application/x-protobuf，具体请求参数与返回要求，请参考internal/customer/callback/callback.go
-OnOpenCallbackApi = "http://127.0.0.1:6636/onopen"
-OnCloseCallbackApi = "http://127.0.0.1:6636/onclose"
-# 连接打开与关闭的回调接口超时时间
-CallbackApiDeadline = "3s"
 # 心跳字符串，客户端连接必须定时发送该字符串，用于维持心跳
 HeartbeatMessage = "~6YOt5rW35piO~"
 # 压缩级别，区间是：[-2,9]，0表示不压缩，具体见https://golang.org/pkg/compress/flate/
@@ -46,7 +46,59 @@ LimitWindowMaxRequests = 100
 # 固定窗口限流器的第0个窗口允许的最大请求数
 LimitZeroWindowMaxRequests = 1000
 
-#Worker的tcp服务器配置
+# 连接打开、发送消息、关闭的回调接口，不需要则不配置
+[Callback]
+OnOpenApi = "http://127.0.0.1:6636/onopen"
+OnMessageApi = "http://127.0.0.1:6636/onmessage"
+OnCloseApi = "http://127.0.0.1:6636/onclose"
+Timeout = "3s"
+
+# Redis队列的配置，不需要则不配置
+[RedisQueue]
+# 公共配置，会合并到 OnOpen、OnMessage、OnClose 配置节点中
+# Redis地址 host:port
+Address = "127.0.0.1:6379"
+# Redis密码
+Password = ""
+# Redis数据库
+DB = 0
+Key = "netsvr:queue:onopenclose"
+# Redis队列的key类型，目前支持：stream、list(左侧压入消息)
+KeyType = "list"
+# 发送消息的Redis队列
+[RedisQueue.OnMessage]
+Key = "netsvr:queue:onmessage"
+KeyType = "stream"
+
+# AMQP091队列的配置，不需要则不配置
+[AMQP091Queue]
+# 公共配置，会合并到 OnOpen、OnMessage、OnClose 配置节点中
+# RabbitMQ服务器地址 host:port
+Address = "localhost:5672"
+# 用户名
+Username = "guest"
+# 密码
+Password = "guest"
+# 虚拟主机（默认 /，可省略）
+VHost = "/"
+Exchange = "netsvr.events"
+# Exchange类型: direct, fanout, topic, headers
+ExchangeType = "topic"
+# 是否持久化
+Durable = true
+# 是否自动删除
+AutoDelete = false
+[AMQP091Queue.OnMessage]
+Queue = "business.onmessage"
+RoutingKey = "event.onmessage"
+[AMQP091Queue.OnOpen]
+Queue = "business.onopenclose"
+RoutingKey = "event.onopenclose"
+[AMQP091Queue.OnClose]
+Queue = "business.onopenclose"
+RoutingKey = "event.onopenclose"
+
+# Worker的tcp服务器配置，不需要则不配置
 [Worker]
 # 监听的地址，ipv4:port，这个地址必须是内网ipv4地址，外网不允许访问，如果配置的是域名:端口，则会尝试获取域名对应的内网ipv4地址，并打印告警日志
 ListenAddress = "127.0.0.1:6081"
@@ -60,12 +112,10 @@ ReceivePackLimit = 2097152
 ReadBufferSize = 4096
 # worker发送给business的缓通道大小
 SendChanCap = 1024
-# worker发送给business的缓通道写入超时，默认是100毫秒，超过该时间还没写入，则丢弃消息并统计worker到business的失败次数
-SendChanDeadline = "100ms"
 # 心跳字符串，客户端连接必须定时发送该字符串，用于维持心跳
 HeartbeatMessage = "~6YOt5rW35piO~"
 
-#Task的tcp服务器配置
+# Task的tcp服务器配置，必须配置
 [Task]
 # 监听的地址，ipv4:port，这个地址必须是内网ipv4地址，外网不允许访问，如果配置的是域名:端口，则会尝试获取域名对应的内网ipv4地址，并打印告警日志
 ListenAddress = "127.0.0.1:6082"
@@ -86,14 +136,23 @@ HeartbeatMessage = "~6YOt5rW35piO~"
 # 1：统计客户连接的打开次数
 # 2：统计客户连接的关闭次数
 # 3：统计客户连接的心跳次数
-# 4：统计客户数据转发到worker的次数
-# 5：统计客户数据转发到worker的字节数
+# 4：统计客户数据通过worker转发到业务侧的次数
+# 5：统计客户数据通过worker转发到业务侧的字节数
 # 6：统计往客户写入数据成功次数
 # 7：统计往客户写入数据成功字节数
 # 8：统计连接打开的限流次数
 # 9：统计客户消息限流次数
-# 10：统计worker到business的失败次数
+# 10：统计客户数据通过worker转发到业务侧的失败次数
 # 11：统计往客户写入数据失败次数
 # 12：统计往客户写入数据失败字节数
 # 13：统计连接消息限流次数
-Item = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+# 14：统计客户数据通过redis队列转发到业务侧的次数
+# 15：统计客户数据通过redis队列转发到业务侧的字节数
+# 16：统计客户数据通过redis队列转发到业务侧的失败次数
+# 17：统计客户数据通过http回调转发到业务侧的次数
+# 18：统计客户数据通过http回调转发到业务侧的字节数
+# 19：统计客户数据通过http回调转发到业务侧的失败次数
+# 20：统计客户数据通过amqp091队列转发到业务侧的次数
+# 21：统计客户数据通过amqp091队列转发到业务侧的字节数
+# 22：统计客户数据通过amqp091队列转发到业务侧的失败次数
+Item = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
