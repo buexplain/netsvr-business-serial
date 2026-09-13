@@ -38,6 +38,7 @@ use Psr\Container\NotFoundExceptionInterface;
 use Psr\Log\NullLogger;
 use Throwable;
 use WebSocket\Client;
+use WebSocket\Configuration;
 use WebSocket\Exception\ConnectionTimeoutException;
 use WebSocket\Middleware\CloseHandler;
 use function NetsvrBusiness\milliSleep;
@@ -108,9 +109,12 @@ abstract class NetBusTestAbstract extends TestCase
 
     /**
      * 向每一个网关都初始化一个websocket连接上去
+     * @param float|int|null $timeout 连接的读超时（秒），null 表示用库的默认值。
+     *        需要「断言收不到数据」的用例应传一个较小值：库只在建立连接时读取一次超时，
+     *        连接建立后没有非弃用的接口可以修改它。
      * @return void
      */
-    protected function resetWsClient(): void
+    protected function resetWsClient(float|int|null $timeout = null): void
     {
         foreach (static::$wsClients as $client) {
             try {
@@ -125,9 +129,15 @@ abstract class NetBusTestAbstract extends TestCase
         }
         static::$wsClients = [];
         static::$wsClientUniqIds = [];
+        //需要指定读超时时，用 Configuration 传入（Client 的 setTimeout 已弃用）
+        $configuration = null;
+        if ($timeout !== null) {
+            $configuration = new Configuration();
+            $configuration->setTimeout($timeout);
+        }
         foreach (static::getNetsvrConfig()['netsvr'] as $config) {
             for ($i = 0; $i < static::NETSVR_ONLINE_NUM; $i++) {
-                $client = new Client($config["ws"]);
+                $client = $configuration === null ? new Client($config["ws"]) : new Client($config["ws"], $configuration);
                 $client->addMiddleware(new CloseHandler());
                 $uniqId = $client->receive()->getContent();
                 static::$wsClientUniqIds[$config['addr']][] = $uniqId;
@@ -215,36 +225,37 @@ abstract class NetBusTestAbstract extends TestCase
     }
 
     /**
-     * 断言连接在给定时间内收不到数据，用读超时判定
+     * 断言连接收不到数据：等待时长由连接建立时的读超时决定，
+     * 因此做这种断言的用例要用 resetWsClient($timeout) 建一个较小读超时的连接
      * @param Client $client
-     * @param float $timeout 秒
      * @return void
      */
-    protected function assertNoMessage(Client $client, float $timeout = 0.3): void
+    protected function assertNoMessage(Client $client): void
     {
-        $defaultTimeout = $client->getTimeout();
-        $client->setTimeout($timeout);
+        $message = null;
         try {
             $message = $client->receive();
         } catch (ConnectionTimeoutException) {
             //预期：读超时，没有数据
-            return;
         } catch (Throwable $throwable) {
             $this->fail('读取数据失败：' . $throwable->getMessage());
-            return;
-        } finally {
-            $client->setTimeout($defaultTimeout);
         }
-        $this->fail('连接不应收到数据，实际收到：' . $message->getContent());
+        if ($message !== null) {
+            $this->fail('连接不应收到数据，实际收到：' . $message->getContent());
+        }
     }
 
     /**
-     * 等待这些连接从网关下线；强制关闭是异步的，网关写完关闭帧后还要清理连接
+     * 等待这些连接从网关下线；强制关闭是异步的，网关写完关闭帧后还要清理连接，因此必须轮询而不能固定 sleep
      * @param array $uniqIds
      * @param float $timeout 秒
+     * @param string $message
      * @return void
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     * @throws Throwable
      */
-    protected function waitOffline(array $uniqIds, float $timeout = 3.0): void
+    protected function waitOffline(array $uniqIds, float $timeout = 3.0, string $message = '等待连接下线超时'): void
     {
         $deadline = microtime(true) + $timeout;
         while (true) {
@@ -253,7 +264,7 @@ abstract class NetBusTestAbstract extends TestCase
                 return;
             }
             if (microtime(true) > $deadline) {
-                $this->fail('等待连接下线超时，仍在线：' . implode(',', $online));
+                $this->fail($message . '，仍在线：' . implode(',', $online));
             }
             milliSleep(20);
         }
@@ -278,12 +289,11 @@ abstract class NetBusTestAbstract extends TestCase
 
     /**
      * 让每个网关各挑一个连接共享同一个 customerId，返回共享的 customerId 与这些连接
-     * @param array $uniqIds
      * @return array [customerId, uniqIds]
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    protected function shareCustomerId(array $uniqIds): array
+    protected function shareCustomerId(): array
     {
         $sharedCustomerId = uniqid('sharedCustomerId');
         $sharedUniqIds = [];
@@ -316,6 +326,7 @@ abstract class NetBusTestAbstract extends TestCase
         $this->connInfoUpdate($uniqIds);
         //检查连接的信息否设置成功
         $ret = NetBus::connInfo($uniqIds)->getItems();
+        $this->assertCount(count($uniqIds), $ret, "返回的连接数量不符合预期");
         foreach ($ret as $uniqId => $value) {
             //校验session是否设置成功
             $this->assertEquals($uniqId . 'Session', $value->getSession());
@@ -349,6 +360,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //检查连接的信息是否删除成功
         $ret = NetBus::connInfo($uniqIds)->getItems();
+        $this->assertCount(count($uniqIds), $ret, "返回的连接数量不符合预期");
         foreach ($ret as $value) {
             $this->assertTrue('' === $value->getSession());
             $this->assertTrue('' === $value->getCustomerId());
@@ -424,7 +436,7 @@ abstract class NetBusTestAbstract extends TestCase
             $customerIds[$uniqId] = $customerIdIncrement;
         }
         $message = uniqid() . str_repeat('a', 10);
-        NetBus::sendToCustomerIds($customerIds, $message);
+        NetBus::sendToCustomerIds(array_values($customerIds), $message);
         foreach (static::$wsClients as $client) {
             //接收每个连接的数据，并判断是否与之前发送的一致
             $this->assertTrue($message === $client->receive()->getContent());
@@ -857,11 +869,8 @@ abstract class NetBusTestAbstract extends TestCase
             $status = unpack('n', substr($payload, 0, 2));
             $this->assertEquals(1008, $status[1]);
         }
-        //等待网关执行完连接的关闭逻辑
-        milliSleep(50);
-        //检查是否在线
-        $ret = NetBus::checkOnline($uniqIds)->getUniqIds();
-        $this->assertEquals([], $ret, '强制关闭某几个连接的结果与预期不符');
+        //等待网关执行完连接的关闭逻辑（清理连接是异步的，用轮询等待）
+        $this->waitOffline($uniqIds, 3.0, '强制关闭某几个连接的结果与预期不符');
     }
 
     /**
@@ -887,7 +896,7 @@ abstract class NetBusTestAbstract extends TestCase
             NetBus::connInfoUpdate($up);
             $customerIds[$uniqId] = $customerIdIncrement;
         }
-        NetBus::forceOfflineByCustomerId($customerIds);
+        NetBus::forceOfflineByCustomerId(array_values($customerIds));
         //服务端写入了关闭帧
         foreach (static::$wsClients as $client) {
             $msg = $client->receive();
@@ -897,11 +906,8 @@ abstract class NetBusTestAbstract extends TestCase
             $status = unpack('n', substr($payload, 0, 2));
             $this->assertEquals(1008, $status[1]);
         }
-        //等待网关执行完连接的关闭逻辑
-        milliSleep(50);
-        //检查是否在线
-        $ret = NetBus::checkOnline($uniqIds)->getUniqIds();
-        $this->assertEmpty($ret, '强制关闭某几个customerId的结果与预期不符');
+        //等待网关执行完连接的关闭逻辑（清理连接是异步的，用轮询等待）
+        $this->waitOffline($uniqIds, 3.0, '强制关闭某几个customerId的结果与预期不符');
     }
 
     /**
@@ -928,11 +934,8 @@ abstract class NetBusTestAbstract extends TestCase
             $status = unpack('n', substr($payload, 0, 2));
             $this->assertEquals(1008, $status[1]);
         }
-        //等待网关执行完连接的关闭逻辑
-        milliSleep(50);
-        //检查是否在线
-        $ret = NetBus::checkOnline($uniqIds)->getUniqIds();
-        $this->assertEmpty($ret, '强制关闭某几个空session值的连接的结果与预期不符');
+        //等待网关执行完连接的关闭逻辑（清理连接是异步的，用轮询等待）
+        $this->waitOffline($uniqIds, 3.0, '强制关闭某几个空session值的连接的结果与预期不符');
         //再测试因为存在session值而关闭失败的情况
         $this->resetWsClient();
         $uniqIds = $this->getDefaultUniqIds();
@@ -945,13 +948,10 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //再强制下线
         NetBus::forceOfflineGuest($uniqIds);
-        //等待网关执行完连接的关闭逻辑
-        milliSleep(50);
-        //检查是否在线
+        //因为有 session 的存在，这些连接不会被下线（不需要等待：网关本就不该关闭它们）
         $ret = NetBus::checkOnline($uniqIds)->getUniqIds();
         sort($uniqIds);
         sort($ret);
-        //因为有session的存在，所以不会被下线，反而依然在线
         $this->assertTrue($ret === $uniqIds, "返回的uniqId不符合预期");
     }
 
@@ -986,6 +986,7 @@ abstract class NetBusTestAbstract extends TestCase
         $this->resetWsClient();
         //获取网关的连接
         $ret = NetBus::uniqIdList()->toArray();
+        $this->assertSameSize(static::getNetsvrConfig()['netsvr'], $ret, "返回的网关行数不符合预期");
         foreach ($ret as $value) {
             $uniqIds = $this->getDefaultUniqIdsByAddr($value['addr']);
             sort($uniqIds);
@@ -1064,6 +1065,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //获取网关的主题列表
         $ret = NetBus::topicList()->toArray();
+        $this->assertSameSize(static::getNetsvrConfig()['netsvr'], $ret, "返回的网关行数不符合预期");
         sort($topics);
         foreach ($ret as $value) {
             sort($value['topics']);
@@ -1090,6 +1092,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //获取每个主题的连接
         $ret = NetBus::topicUniqIdList($topics)->toArray();
+        $this->assertCount(count($topics) * count(static::getNetsvrConfig()['netsvr']), $ret, "返回的「网关×主题」行数不符合预期");
         foreach ($ret as $value) {
             $uniqIds = $this->getDefaultUniqIdsByAddr($value['addr']);
             sort($uniqIds);
@@ -1118,6 +1121,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //获取每个主题的连接数量
         $ret = NetBus::topicUniqIdCount($topics)->toArray();
+        $this->assertCount(count($topics) * count(static::getNetsvrConfig()['netsvr']), $ret, "返回的「网关×主题」行数不符合预期");
         foreach ($ret as $value) {
             $uniqIds = $this->getDefaultUniqIdsByAddr($value['addr']);
             $this->assertTrue(in_array($value['topic'], $topics), "返回的topic不符合预期");
@@ -1148,6 +1152,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //获取主题的客户端id
         $ret = NetBus::topicCustomerIdList($topics)->toArray();
+        $this->assertCount(count($topics) * count(static::getNetsvrConfig()['netsvr']), $ret, "返回的「网关×主题」行数不符合预期");
         foreach ($ret as $value) {
             $uniqIds = $this->getDefaultUniqIdsByAddr($value['addr']);
             sort($uniqIds);
@@ -1233,6 +1238,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //获取主题的客户端id
         $ret = NetBus::topicCustomerIdCount($topics)->toArray();
+        $this->assertCount(count($topics) * count(static::getNetsvrConfig()['netsvr']), $ret, "返回的「网关×主题」行数不符合预期");
         foreach ($ret as $value) {
             $uniqIds = $this->getDefaultUniqIdsByAddr($value['addr']);
             sort($uniqIds);
@@ -1253,6 +1259,7 @@ abstract class NetBusTestAbstract extends TestCase
         $uniqIds = $this->getDefaultUniqIds();
         //先测试没有数据的情况
         $ret = NetBus::connInfo($uniqIds)->getItems();
+        $this->assertCount(count($uniqIds), $ret, "返回的连接数量不符合预期");
         foreach ($ret as $uniqId => $item) {
             $this->assertTrue(in_array($uniqId, $uniqIds), "网关返回的用户信息不符合预期");
             $this->assertEmpty($item->getCustomerId(), "网关返回的用户customerId不符合预期");
@@ -1273,6 +1280,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //测试有数据的情况下，获取全部数据
         $ret = NetBus::connInfo($uniqIds)->getItems();
+        $this->assertCount(count($uniqIds), $ret, "返回的连接数量不符合预期");
         foreach ($ret as $uniqId => $item) {
             $this->assertTrue(in_array($uniqId, $uniqIds), "网关返回的用户信息不符合预期");
             $this->assertEquals($item->getCustomerId(), $uniqId . 'CustomerId', "网关返回的用户customerId不符合预期");
@@ -1281,6 +1289,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //测试有数据的情况下，，只获取customerId
         $ret = NetBus::connInfo($uniqIds, false, true, false)->getItems();
+        $this->assertCount(count($uniqIds), $ret, "返回的连接数量不符合预期");
         foreach ($ret as $uniqId => $item) {
             $this->assertEquals($item->getCustomerId(), $uniqId . 'CustomerId', "网关返回的用户customerId不符合预期");
             $this->assertEmpty($item->getSession(), "网关返回的用户session不符合预期");
@@ -1288,6 +1297,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //测试有数据的情况下，只获取session
         $ret = NetBus::connInfo($uniqIds, true, false, false)->getItems();
+        $this->assertCount(count($uniqIds), $ret, "返回的连接数量不符合预期");
         foreach ($ret as $uniqId => $item) {
             $this->assertEmpty($item->getCustomerId(), "网关返回的用户customerId不符合预期");
             $this->assertEquals($item->getSession(), $uniqId . 'Session', "网关返回的用户session不符合预期");
@@ -1295,6 +1305,7 @@ abstract class NetBusTestAbstract extends TestCase
         }
         //测试有数据的情况下，只获取topic
         $ret = NetBus::connInfo($uniqIds, false, false)->getItems();
+        $this->assertCount(count($uniqIds), $ret, "返回的连接数量不符合预期");
         foreach ($ret as $uniqId => $item) {
             $this->assertEmpty($item->getCustomerId(), "网关返回的用户customerId不符合预期");
             $this->assertEmpty($item->getSession(), "网关返回的用户session不符合预期");
@@ -1361,11 +1372,15 @@ abstract class NetBusTestAbstract extends TestCase
     public function testLimit(): void
     {
         $config = NetBus::limit(null)->toArray();
-        $this->assertNotEmpty($config);
+        $this->assertSameSize(static::getNetsvrConfig()['netsvr'], $config, "返回的addr数量不符合预期");
+        //不断言具体的限流值：协议里 0 表示不启用限流，具体值取决于网关的启动配置
         foreach ($config as $item) {
             $this->assertNotEmpty($item['addr'], "限流配置addr不能为空");
-            $this->assertNotEmpty($item['onMessage'], "限流配置onMessage不能为空");
-            $this->assertNotEmpty($item['onOpen'], "限流配置onOpen不能为空");
+            //指定网关读取到的配置应与全量读取中该网关的配置一致
+            $one = NetBus::limit(null, $item['addr'])->toArray();
+            $this->assertCount(1, $one, "指定网关读取限流配置应只返回一条");
+            $this->assertEquals($item['onMessage'], $one[0]['onMessage'], "指定网关与全量读取的 onMessage 不一致");
+            $this->assertEquals($item['onOpen'], $one[0]['onOpen'], "指定网关与全量读取的 onOpen 不一致");
         }
     }
 
@@ -1389,6 +1404,7 @@ abstract class NetBusTestAbstract extends TestCase
         $this->connInfoUpdate($uniqIds);
         //再次获取网关中的客户端连接的客户端id
         $ret = NetBus::customerIdList()->toArray();
+        $this->assertSameSize(static::getNetsvrConfig()['netsvr'], $ret, "返回的addr数量不符合预期");
         foreach ($ret as $value) {
             $uniqIds = $this->getDefaultUniqIdsByAddr($value['addr']);
             $this->assertSameSize($uniqIds, $value['customerIds'], "返回的customerIds数量不符合预期");
@@ -1408,6 +1424,7 @@ abstract class NetBusTestAbstract extends TestCase
         $uniqIds = $this->getDefaultUniqIds();
         $this->connInfoUpdate($uniqIds);
         $ret = NetBus::customerIdCount()->toArray();
+        $this->assertSameSize(static::getNetsvrConfig()['netsvr'], $ret, "返回的addr数量不符合预期");
         foreach ($ret as $value) {
             $expected = count($this->getDefaultUniqIdsByAddr($value['addr']));
             $this->assertEquals($expected, $value['count'], "返回的customerId数量不符合预期");
@@ -1468,37 +1485,27 @@ abstract class NetBusTestAbstract extends TestCase
         $this->resetWsClient();
         $uniqIds = $this->getDefaultUniqIds();
         //先给每个连接设置一个唯一的 customerId
-        $customerIds = [];
         foreach ($uniqIds as $uniqId) {
-            $customerIds[$uniqId] = $uniqId . 'CustomerId';
             $up = new ConnInfoUpdate();
             $up->setUniqId($uniqId);
-            $up->setNewCustomerId($customerIds[$uniqId]);
+            $up->setNewCustomerId($uniqId . 'CustomerId');
             NetBus::connInfoUpdate($up);
         }
         //再让每个网关各有一个连接共享同一个 customerId，用于验证跨网关去重
-        $sharedCustomerId = uniqid('sharedCustomerId');
-        $sharedUniqIds = [];
-        foreach (static::getNetsvrConfig()['netsvr'] as $config) {
-            $addrUniqIds = $this->getDefaultUniqIdsByAddr($config['addr']);
-            if (!isset($addrUniqIds[0])) {
+        [$sharedCustomerId, $sharedUniqIds] = $this->shareCustomerId();
+        //期望的客户列表：共享的客户只算一个，其余连接各自一个
+        $expectCustomerIds = [$sharedCustomerId];
+        foreach ($uniqIds as $uniqId) {
+            if (in_array($uniqId, $sharedUniqIds, true)) {
                 continue;
             }
-            $sharedUniqIds[] = $addrUniqIds[0];
-            $customerIds[$addrUniqIds[0]] = $sharedCustomerId;
-            $up = new ConnInfoUpdate();
-            $up->setUniqId($addrUniqIds[0]);
-            $up->setNewCustomerId($sharedCustomerId);
-            NetBus::connInfoUpdate($up);
+            $expectCustomerIds[] = $uniqId . 'CustomerId';
         }
-        //期望的客户列表：跨网关去重后的 customerId
-        $expectCustomerIds = array_values(array_unique(array_values($customerIds)));
         sort($expectCustomerIds);
         $customerIdListRet = NetBus::customerIdList();
         $retCustomerIds = $customerIdListRet->getCustomerIds();
         sort($retCustomerIds);
-        $this->assertEquals($expectCustomerIds, $retCustomerIds, "CustomerIdListRet::getCustomerIds 不符合预期");
-        $this->assertCount(count($expectCustomerIds), $retCustomerIds, "CustomerIdListRet::getCustomerIds 未跨网关去重");
+        $this->assertEquals($expectCustomerIds, $retCustomerIds, "CustomerIdListRet::getCustomerIds 不符合预期（跨网关去重后应只算一个）");
         $this->assertEquals(count($expectCustomerIds), $customerIdListRet->getLen(), "CustomerIdListRet::getLen 不符合预期");
         $this->assertTrue($customerIdListRet->has($sharedCustomerId), "CustomerIdListRet::has 命中失败");
         $this->assertFalse($customerIdListRet->has('notExistCustomerId'), "CustomerIdListRet::has 未命中判断失败");
@@ -1598,8 +1605,8 @@ abstract class NetBusTestAbstract extends TestCase
      */
     public function testSingleCastBulkSkipInvalidTarget(): void
     {
-        //连接到网关
-        $this->resetWsClient();
+        //连接到网关。本用例要用 assertNoMessage 断言「没收到数据」，读超时取小值以缩短等待
+        $this->resetWsClient(0.5);
         $uniqIds = $this->getDefaultUniqIds();
         //uniqId 的前 12 个十六进制字符是网关地址，尾部换成不存在的自增 id，
         //构造一个「落在同一个网关、但连接不存在」的目标
@@ -1622,12 +1629,9 @@ abstract class NetBusTestAbstract extends TestCase
         //有效的数据被投递
         $this->assertTrue($dataFirst === $this->clientOf($validFirst)->receive()->getContent(), "不存在的目标影响了同项内的真实目标");
         $this->assertTrue($dataSecond === $this->clientOf($validSecond)->receive()->getContent(), "空数据影响了同项内的真实数据");
-        //目标为空、数据为空的项不应投递任何数据，不存在的目标也不影响其它连接
-        $this->assertNoMessage($this->clientOf($validThird));
-        foreach (static::$wsClients as $uniqId => $client) {
-            if ($uniqId === $validFirst || $uniqId === $validSecond) {
-                continue;
-            }
+        //上面的预期数据都已收到，此后所有连接都不应再有任何数据：
+        //既证明空目标、空数据的项没有投递，也证明不存在的目标没有影响任何其它连接
+        foreach (static::$wsClients as $client) {
             $this->assertNoMessage($client);
         }
     }
@@ -1660,6 +1664,9 @@ abstract class NetBusTestAbstract extends TestCase
                 $status = unpack('n', substr($message->getPayload(), 0, 2));
                 $this->assertEquals(1008, $status[1], '关闭码不符合预期');
             }
+            //兜底时间未到时连接仍应在网关的在线列表里：说明网关是在等兜底时间，而不是立刻关闭
+            milliSleep(500);
+            $this->assertNotEmpty(NetBus::checkOnline($uniqIds)->getUniqIds(), '写出关闭帧后不应立即关闭连接（网关应等 2 秒兜底后再强制关闭）');
             //兜底关闭到达后，连接会从网关的在线列表里消失
             $this->waitOffline($uniqIds, 5.0);
         } finally {
@@ -1683,11 +1690,11 @@ abstract class NetBusTestAbstract extends TestCase
      */
     public function testSendToSharedCustomerId(): void
     {
-        //连接到网关
-        $this->resetWsClient();
+        //连接到网关。本用例要用 assertNoMessage 断言「没收到数据」，读超时取小值以缩短等待
+        $this->resetWsClient(0.5);
         $uniqIds = $this->getDefaultUniqIds();
         $this->setUniqueCustomerId($uniqIds);
-        [$sharedCustomerId, $sharedUniqIds] = $this->shareCustomerId($uniqIds);
+        [$sharedCustomerId, $sharedUniqIds] = $this->shareCustomerId();
         //组播：该客户的全部连接（含跨网关）都收到
         $message = uniqid('sendToSharedCustomerId');
         NetBus::sendToCustomerIds([$sharedCustomerId], $message);
