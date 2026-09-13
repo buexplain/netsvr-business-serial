@@ -32,7 +32,7 @@ use NetsvrBusiness\Ret\TopicCustomerIdCountRet;
 use NetsvrBusiness\Ret\TopicCustomerIdListRet;
 use NetsvrBusiness\Ret\TopicCustomerIdToUniqIdsListRet;
 use NetsvrBusiness\Ret\TopicListRet;
-use NetsvrProtocol\Broadcast;
+use NetsvrProtocol\BroadcastBulk;
 use NetsvrProtocol\CheckOnlineReq;
 use NetsvrProtocol\CheckOnlineResp;
 use NetsvrProtocol\Cmd;
@@ -50,12 +50,10 @@ use NetsvrProtocol\ForceOfflineGuest;
 use NetsvrProtocol\LimitReq;
 use NetsvrProtocol\LimitResp;
 use NetsvrProtocol\MetricsResp;
-use NetsvrProtocol\Multicast;
-use NetsvrProtocol\MulticastByCustomerId;
-use NetsvrProtocol\SingleCast;
 use NetsvrProtocol\SingleCastBulk;
 use NetsvrProtocol\SingleCastBulkByCustomerId;
-use NetsvrProtocol\SingleCastByCustomerId;
+use NetsvrProtocol\SingleCastBulkByCustomerIdItem;
+use NetsvrProtocol\SingleCastBulkItem;
 use NetsvrProtocol\TopicCountResp;
 use NetsvrProtocol\TopicCustomerIdCountReq;
 use NetsvrProtocol\TopicCustomerIdCountResp;
@@ -65,8 +63,8 @@ use NetsvrProtocol\TopicCustomerIdToUniqIdsListReq;
 use NetsvrProtocol\TopicCustomerIdToUniqIdsListResp;
 use NetsvrProtocol\TopicDelete;
 use NetsvrProtocol\TopicListResp;
-use NetsvrProtocol\TopicPublish;
 use NetsvrProtocol\TopicPublishBulk;
+use NetsvrProtocol\TopicPublishBulkItem;
 use NetsvrProtocol\TopicSubscribe;
 use NetsvrProtocol\TopicUniqIdCountReq;
 use NetsvrProtocol\TopicUniqIdCountResp;
@@ -116,7 +114,24 @@ class NetBus
     }
 
     /**
-     * 广播
+     * 批量广播，网关按顺序把每一条数据广播给全部连接
+     * @param array|string[] $data 需要广播的数据列表
+     * @return void
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     */
+    public static function broadcastBulk(array $data): void
+    {
+        if (empty($data)) {
+            return;
+        }
+        $broadcastBulk = new BroadcastBulk();
+        $broadcastBulk->setData($data);
+        self::sendToSockets(self::pack(Cmd::BroadcastBulk, $broadcastBulk->serializeToString()));
+    }
+
+    /**
+     * 广播一条数据给全部连接，等价于 broadcastBulk 只传一条数据
      * @param string $data 需要发送的数据
      * @return void
      * @throws ContainerExceptionInterface
@@ -124,182 +139,124 @@ class NetBus
      */
     public static function broadcast(string $data): void
     {
-        $broadcast = new Broadcast();
-        $broadcast->setData($data);
-        self::sendToSockets(self::pack(Cmd::Broadcast, $broadcast->serializeToString()));
+        self::broadcastBulk([$data]);
     }
 
     /**
-     * 按uniqId组播
-     * @param array|string|string[] $uniqIds 目标客户的网关uniqId
+     * 给一个连接发送一条数据
+     * @param string $uniqId 目标连接的网关uniqId
      * @param string $data 需要发送的数据
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public static function multicast(array|string $uniqIds, string $data): void
+    public static function sendToUniqId(string $uniqId, string $data): void
     {
-        $uniqIds = (array)$uniqIds;
-        //网关是单点部署或者是只有一个待发送的uniqId，则直接发送
-        if (self::isSinglePoint() || count($uniqIds) == 1) {
-            $multicast = new Multicast();
-            $multicast->setUniqIds($uniqIds);
-            $multicast->setData($data);
-            self::sendToSocketByUniqId($uniqIds[array_key_last($uniqIds)], self::pack(Cmd::Multicast, $multicast->serializeToString()));
+        $item = new SingleCastBulkItem();
+        $item->setUniqIds([$uniqId]);
+        $item->setData([$data]);
+        self::singleCastBulk([$item]);
+    }
+
+    /**
+     * 给一组连接发送同一条数据
+     * @param array|string|string[] $uniqIds 目标连接的网关uniqId
+     * @param string $data 需要发送的数据
+     * @return void
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     */
+    public static function sendToUniqIds(array|string $uniqIds, string $data): void
+    {
+        $item = new SingleCastBulkItem();
+        $item->setUniqIds((array)$uniqIds);
+        $item->setData([$data]);
+        self::singleCastBulk([$item]);
+    }
+
+    /**
+     * 按uniqId批量单播，每一项是一组uniqId与其数据，
+     * 网关会把本项内每一条数据按顺序发给本项内的每一个uniqId
+     * @param SingleCastBulkItem[] $items 目标与数据的配对列表
+     * @return void
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     */
+    public static function singleCastBulk(array $items): void
+    {
+        if (empty($items)) {
             return;
         }
-        //对uniqId按所属网关进行分组
-        $group = self::getUniqIdsGroupByAddrAsHex($uniqIds);
-        //循环发送给各个网关
-        foreach ($group as $addrAsHex => $currentUniqIds) {
-            $multicast = (new Multicast())->setData($data)->setUniqIds($currentUniqIds);
-            self::sendToSocketByAddrAsHex($addrAsHex, self::pack(Cmd::Multicast, $multicast->serializeToString()));
+        //网关是单点部署，则直接发送
+        if (self::isSinglePoint()) {
+            $singleCastBulk = new SingleCastBulk();
+            $singleCastBulk->setItems($items);
+            self::sendToSockets(self::pack(Cmd::SingleCastBulk, $singleCastBulk->serializeToString()));
+            return;
+        }
+        //网关是多机器部署，需要按每个uniqId所在网关拆分，再分别发送到对应网关
+        $bulks = [];
+        foreach ($items as $item) {
+            foreach ($item->getUniqIds() as $uniqId) {
+                $bulkItem = new SingleCastBulkItem();
+                $bulkItem->setUniqIds([$uniqId]);
+                $bulkItem->setData(repeatedFieldToArray($item->getData()));
+                $bulks[uniqIdConvertToAddrAsHex($uniqId)][] = $bulkItem;
+            }
+        }
+        foreach ($bulks as $addrAsHex => $currentItems) {
+            $singleCastBulk = new SingleCastBulk();
+            $singleCastBulk->setItems($currentItems);
+            self::sendToSocketByAddrAsHex($addrAsHex, self::pack(Cmd::SingleCastBulk, $singleCastBulk->serializeToString()));
         }
     }
 
     /**
-     * 按customerId组播
-     * @param array|string|string[] $customerIds 目标客户的customerId
-     * @param string $data 需要发送的数据
+     * 按customerId批量单播，每一项是一组customerId与其数据，
+     * 网关会把本项内每一条数据按顺序发给本项内每一个customerId对应的所有连接
+     * @param SingleCastBulkByCustomerIdItem[] $items 目标与数据的配对列表
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public static function multicastByCustomerId(array|string|int $customerIds, string $data): void
+    public static function singleCastBulkByCustomerId(array $items): void
     {
-        $multicastByCustomerId = new MulticastByCustomerId();
-        $multicastByCustomerId->setCustomerIds((array)$customerIds);
-        $multicastByCustomerId->setData($data);
+        if (empty($items)) {
+            return;
+        }
+        $singleCastBulkByCustomerId = new SingleCastBulkByCustomerId();
+        $singleCastBulkByCustomerId->setItems($items);
         //因为不知道客户id在哪个网关，所以给所有网关发送
-        self::sendToSockets(self::pack(Cmd::MulticastByCustomerId, $multicastByCustomerId->serializeToString()));
+        self::sendToSockets(self::pack(Cmd::SingleCastBulkByCustomerId, $singleCastBulkByCustomerId->serializeToString()));
     }
 
     /**
-     * 按uniqId单播
-     * @param string $uniqId 目标客户的网关uniqId
-     * @param string $data 需要发送的数据
-     * @return void
-     * @throws ContainerExceptionInterface
-     * @throws NotFoundExceptionInterface
-     */
-    public static function singleCast(string $uniqId, string $data): void
-    {
-        $singleCast = new SingleCast();
-        $singleCast->setUniqId($uniqId);
-        $singleCast->setData($data);
-        self::sendToSocketByUniqId($uniqId, self::pack(Cmd::SingleCast, $singleCast->serializeToString()));
-    }
-
-    /**
-     * 按customerId单播
+     * 给一个客户的所有连接发送一条数据
      * @param string|int $customerId 目标客户的customerId
      * @param string $data 需要发送的数据
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public static function singleCastByCustomerId(string|int $customerId, string $data): void
+    public static function sendToCustomerId(string|int $customerId, string $data): void
     {
-        $singleCastByCustomerId = new SingleCastByCustomerId();
-        $singleCastByCustomerId->setCustomerId((string)$customerId);
-        $singleCastByCustomerId->setData($data);
-        //因为不知道客户id在哪个网关，所以给所有网关发送
-        self::sendToSockets(self::pack(Cmd::SingleCastByCustomerId, $singleCastByCustomerId->serializeToString()));
+        self::sendToCustomerIds([$customerId], $data);
     }
 
     /**
-     * 按uniqId批量单播，一次性给多个用户发送不同的消息，或给一个用户发送多条消息
-     * @param array $params 入参示例如下：
-     * ['目标uniqId1'=>'数据1', '目标uniqId2'=>'数据2']
-     * ['uniqIds'=>['目标uniqId1', '目标uniqId2'], 'data'=>['数据1', '数据2']]
-     * ['uniqIds'=>'目标uniqId1', 'data'=>['数据1', '数据2']]
-     * ['uniqIds'=>['目标uniqId1'], 'data'=>['数据1', '数据2']]
+     * 给一组客户的所有连接发送同一条数据
+     * @param array|string|int|string[]|int[] $customerIds 目标客户的customerId
+     * @param string $data 需要发送的数据
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public static function singleCastBulk(array $params): void
+    public static function sendToCustomerIds(array|string|int $customerIds, string $data): void
     {
-        //网关是单机部署或者是只给一个用户发消息，则直接构造批量单播对象发送
-        if (self::isSinglePoint() ||
-            //这种格式的入参：['目标uniqId1'=>'数据1']
-            count($params) === 1 ||
-            //这种格式的入参：['uniqIds'=>'目标uniqId1', 'data'=>['数据1', '数据2']]
-            //或者是这种格式的入参：['uniqIds'=>['目标uniqId1'], 'data'=>['数据1', '数据2']]
-            (isset($params['data']) && isset($params['uniqIds']) && (!is_array($params['uniqIds']) || count($params['uniqIds']) === 1))
-        ) {
-            $singleCastBulk = new SingleCastBulk();
-            if (isset($params['uniqIds']) && isset($params['data'])) {
-                //这种格式的入参：['uniqIds'=>'目标uniqId1', 'data'=>['数据1', '数据2']]
-                //或者是这种格式的入参：['uniqIds'=>['目标uniqId1'], 'data'=>['数据1', '数据2']]
-                $uniqIds = (array)$params['uniqIds'];
-                $singleCastBulk->setUniqIds($uniqIds);
-                $singleCastBulk->setData((array)$params['data']);
-            } else {
-                //这种格式的入参：['目标uniqId1'=>'数据1']
-                $uniqIds = array_keys($params);
-                $singleCastBulk->setUniqIds($uniqIds);
-                $singleCastBulk->setData(array_values($params));
-            }
-            self::sendToSocketByUniqId($uniqIds[array_key_last($uniqIds)], self::pack(Cmd::SingleCastBulk, $singleCastBulk->serializeToString()));
-            return;
-        }
-        //网关是多机器部署，需要迭代每一个uniqId，并根据所在网关进行分组，然后再迭代每一个组，将数据发送到对应网关
-        $bulks = [];
-        if (isset($params['uniqIds']) && isset($params['data'])) {
-            //这种结构的入参：['uniqIds'=>['目标uniqId1', '目标uniqId2'], 'data'=>['数据1', '数据2']]
-            $params['data'] = (array)$params['data'];
-            foreach ($params['uniqIds'] as $index => $uniqId) {
-                $addrAsHex = uniqIdConvertToAddrAsHex($uniqId);
-                $bulks[$addrAsHex]['uniqIds'][] = $uniqId;
-                $bulks[$addrAsHex]['data'][] = $params['data'][$index];
-            }
-        } else {
-            //这种结构的入参：['目标uniqId1'=>'数据1', '目标uniqId2'=>'数据2']
-            foreach ($params as $uniqId => $data) {
-                $addrAsHex = uniqIdConvertToAddrAsHex($uniqId);
-                $bulks[$addrAsHex]['uniqIds'][] = $uniqId;
-                $bulks[$addrAsHex]['data'][] = $data;
-            }
-        }
-        //分组完毕，循环发送到各个网关
-        foreach ($bulks as $addrAsHex => $bulk) {
-            $singleCastBulk = new SingleCastBulk();
-            $singleCastBulk->setUniqIds($bulk['uniqIds']);
-            $singleCastBulk->setData($bulk['data']);
-            self::sendToSocketByAddrAsHex($addrAsHex, self::pack(Cmd::SingleCastBulk, $singleCastBulk->serializeToString()));
-        }
-    }
-
-    /**
-     * 按customerId批量单播，一次性给多个用户发送不同的消息，或给一个用户发送多条消息
-     * @param array $params 入参示例如下：
-     * ['customerIds'=>'目标customerId1', 'data'=>['数据1', '数据2']]
-     * ['customerIds'=>['目标customerId1'], 'data'=>['数据1', '数据2']]
-     * ['customerIds'=>['目标customerId1', '目标customerId2'], 'data'=>['数据1', '数据2']]
-     * ['目标customerId1'=>'数据1', '目标customerId2'=>'数据2']
-     * @return void
-     * @throws ContainerExceptionInterface
-     * @throws NotFoundExceptionInterface
-     */
-    public static function singleCastBulkByCustomerId(array $params): void
-    {
-        $f = function (array $customerIds, array $data) {
-            $singleCastBulkByCustomerId = new SingleCastBulkByCustomerId();
-            $singleCastBulkByCustomerId->setCustomerIds($customerIds);
-            $singleCastBulkByCustomerId->setData($data);
-            //因为不知道客户id在哪个网关，所以给所有网关发送
-            self::sendToSockets(self::pack(Cmd::SingleCastBulkByCustomerId, $singleCastBulkByCustomerId->serializeToString()));
-        };
-        //入参格式1：['customerIds'=>'目标customerId1', 'data'=>['数据1', '数据2']]
-        //入参格式2：['customerIds'=>['目标customerId1'], 'data'=>['数据1', '数据2']]
-        //入参格式3：['customerIds'=>['目标customerId1', '目标customerId2'], 'data'=>['数据1', '数据2']]
-        if (isset($params['customerIds']) && isset($params['data'])) {
-            $f((array)$params['customerIds'], (array)$params['data']);
-            return;
-        }
-        //入参格式4：['目标customerId1'=>'数据1', '目标customerId2'=>'数据2']
-        $f(array_keys($params), array_values($params));
+        $item = new SingleCastBulkByCustomerIdItem();
+        $item->setCustomerIds(array_map('strval', (array)$customerIds));
+        $item->setData([$data]);
+        self::singleCastBulkByCustomerId([$item]);
     }
 
     /**
@@ -355,47 +312,53 @@ class NetBus
     }
 
     /**
-     * 发布
-     * @param array|string|string[] $topics 需要发布数据的主题
+     * 批量发布，每一项是一组主题与其数据，
+     * 网关会把本项内每一条数据按顺序发布给本项内每一个主题的所有订阅连接
+     * @param TopicPublishBulkItem[] $items 主题与数据的配对列表
+     * @return void
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     */
+    public static function topicPublishBulk(array $items): void
+    {
+        if (empty($items)) {
+            return;
+        }
+        $topicPublishBulk = new TopicPublishBulk();
+        $topicPublishBulk->setItems($items);
+        self::sendToSockets(self::pack(Cmd::TopicPublishBulk, $topicPublishBulk->serializeToString()));
+    }
+
+    /**
+     * 给一个主题发布一条数据
+     * @param string $topic 目标主题
      * @param string $data 需要发给客户的数据
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public static function topicPublish(array|string $topics, string $data): void
+    public static function publishToTopic(string $topic, string $data): void
     {
-        $topicPublish = new TopicPublish();
-        $topicPublish->setTopics((array)$topics);
-        $topicPublish->setData($data);
-        self::sendToSockets(self::pack(Cmd::TopicPublish, $topicPublish->serializeToString()));
+        $item = new TopicPublishBulkItem();
+        $item->setTopics([$topic]);
+        $item->setData([$data]);
+        self::topicPublishBulk([$item]);
     }
 
     /**
-     * 批量发布，一次性给多个主题发送不同的消息，或给一个主题发送多条消息
-     * @param array $params 入参示例如下：
-     * ['目标主题1'=>'数据1', '目标主题2'=>'数据2']
-     * ['topics'=>['目标主题1', '目标主题2'], 'data'=>['数据1', '数据2']]
-     * ['topics'=>'目标主题1', 'data'=>['数据1', '数据2']]
+     * 给一组主题发布同一条数据
+     * @param array|string|string[] $topics 目标主题
+     * @param string $data 需要发给客户的数据
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public static function topicPublishBulk(array $params): void
+    public static function publishToTopics(array|string $topics, string $data): void
     {
-        $topicPublishBulk = new TopicPublishBulk();
-        if (isset($params['topics']) && isset($params['data'])) {
-            //topics的值可以是只有一个，或者是与data的数量一致
-            //['topics'=>'目标主题1', 'data'=>['数据1', '数据2']]
-            //['topics'=>['目标主题1', '目标主题2'], 'data'=>['数据1', '数据2']]
-            $topicPublishBulk->setTopics((array)$params['topics']);
-            $topicPublishBulk->setData((array)$params['data']);
-        } else {
-            //key是topic，value是发给topic的数据，一一对应关系的
-            //['目标主题1'=>'数据1', '目标主题2'=>'数据2']
-            $topicPublishBulk->setTopics(array_keys($params));
-            $topicPublishBulk->setData(array_values($params));
-        }
-        self::sendToSockets(self::pack(Cmd::TopicPublishBulk, $topicPublishBulk->serializeToString()));
+        $item = new TopicPublishBulkItem();
+        $item->setTopics((array)$topics);
+        $item->setData([$data]);
+        self::topicPublishBulk([$item]);
     }
 
     /**
@@ -655,18 +618,17 @@ class NetBus
     }
 
     /**
-     * 统计网关中某几个主题包含的连接数
+     * 统计网关中某几个主题包含的连接数，topics为空即统计全部主题，统计结果是去重的
      * @param array|string|string[] $topics 需要统计连接数的主题
-     * @param bool $allTopic 是否统计全部主题的连接数
      * @return TopicUniqIdCountRet
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      * @throws Throwable
      */
-    public static function topicUniqIdCount(array|string $topics, bool $allTopic = false): TopicUniqIdCountRet
+    public static function topicUniqIdCount(array|string $topics): TopicUniqIdCountRet
     {
         $sockets = self::getTaskSocketManger()->getSockets();
-        $req = self::pack(Cmd::TopicUniqIdCount, (new TopicUniqIdCountReq())->setTopics((array)$topics)->setCountAll($allTopic)->serializeToString());
+        $req = self::pack(Cmd::TopicUniqIdCount, (new TopicUniqIdCountReq())->setTopics((array)$topics)->serializeToString());
         $ret = new TopicUniqIdCountRet();
         foreach ($sockets as $socket) {
             $socket->send($req);
@@ -734,18 +696,17 @@ class NetBus
     }
 
     /**
-     * 统计网关中某几个主题包含的customerId数量
-     * @param array|string|string[] $topics 需要统计连接数的主题
-     * @param bool $allTopic 是否统计全部主题的customerId数量
+     * 统计网关中某几个主题包含的customerId数量，topics为空即统计全部主题，统计结果是去重的
+     * @param array|string|string[] $topics 需要统计的主题
      * @return TopicCustomerIdCountRet
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      * @throws Throwable
      */
-    public static function topicCustomerIdCount(array|string $topics, bool $allTopic = false): TopicCustomerIdCountRet
+    public static function topicCustomerIdCount(array|string $topics): TopicCustomerIdCountRet
     {
         $sockets = self::getTaskSocketManger()->getSockets();
-        $req = self::pack(Cmd::TopicCustomerIdCount, (new TopicCustomerIdCountReq())->setTopics((array)$topics)->setCountAll($allTopic)->serializeToString());
+        $req = self::pack(Cmd::TopicCustomerIdCount, (new TopicCustomerIdCountReq())->setTopics((array)$topics)->serializeToString());
         $ret = new TopicCustomerIdCountRet();
         foreach ($sockets as $socket) {
             $socket->send($req);
@@ -763,21 +724,21 @@ class NetBus
     /**
      * 获取目标uniqId在网关中存储的信息
      * @param array|string $uniqIds
-     * @param bool $reqCustomerId 是否请求customerId
      * @param bool $reqSession 是否请求session
+     * @param bool $reqCustomerId 是否请求customerId
      * @param bool $reqTopic 是否请求topic
      * @return ConnInfoRet
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      * @throws Exception
      */
-    public static function connInfo(array|string $uniqIds, bool $reqCustomerId = true, bool $reqSession = true, bool $reqTopic = true): ConnInfoRet
+    public static function connInfo(array|string $uniqIds, bool $reqSession = true, bool $reqCustomerId = true, bool $reqTopic = true): ConnInfoRet
     {
         $uniqIds = (array)$uniqIds;
-        $f = function ($uniqIds) use ($reqCustomerId, $reqSession, $reqTopic): string {
+        $f = function ($uniqIds) use ($reqSession, $reqCustomerId, $reqTopic): string {
             $connInfoReq = (new ConnInfoReq())->setUniqIds($uniqIds);
-            $connInfoReq->setReqCustomerId($reqCustomerId);
             $connInfoReq->setReqSession($reqSession);
+            $connInfoReq->setReqCustomerId($reqCustomerId);
             $connInfoReq->setReqTopic($reqTopic);
             return $connInfoReq->serializeToString();
         };
@@ -825,23 +786,23 @@ class NetBus
     /**
      * 获取目标customerId在网关中存储的信息
      * @param array|string $customerIds
-     * @param bool $reqUniqId 是否请求uniqId
      * @param bool $reqSession 是否请求session
+     * @param bool $reqUniqId 是否请求uniqId
      * @param bool $reqTopic 是否请求topic
      * @return ConnInfoByCustomerIdRet
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      * @throws Exception
      */
-    public static function connInfoByCustomerId(array|string $customerIds, bool $reqUniqId = true, bool $reqSession = true, bool $reqTopic = true): ConnInfoByCustomerIdRet
+    public static function connInfoByCustomerId(array|string $customerIds, bool $reqSession = true, bool $reqUniqId = true, bool $reqTopic = true): ConnInfoByCustomerIdRet
     {
         $sockets = self::getTaskSocketManger()->getSockets();
         if (empty($sockets)) {
             return new ConnInfoByCustomerIdRet();
         }
         $connInfoByCustomerIdReq = (new ConnInfoByCustomerIdReq())->setCustomerIds((array)$customerIds);
-        $connInfoByCustomerIdReq->setReqUniqId($reqUniqId);
         $connInfoByCustomerIdReq->setReqSession($reqSession);
+        $connInfoByCustomerIdReq->setReqUniqId($reqUniqId);
         $connInfoByCustomerIdReq->setReqTopic($reqTopic);
         $req = self::pack(Cmd::ConnInfoByCustomerId, $connInfoByCustomerIdReq->serializeToString());
         $ret = new ConnInfoByCustomerIdRet();

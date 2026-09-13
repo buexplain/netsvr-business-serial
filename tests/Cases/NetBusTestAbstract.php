@@ -22,6 +22,9 @@ namespace NetsvrBusinessTest\Cases;
 use ErrorException;
 use NetsvrProtocol\ConnInfoDelete;
 use NetsvrProtocol\ConnInfoUpdate;
+use NetsvrProtocol\SingleCastBulkByCustomerIdItem;
+use NetsvrProtocol\SingleCastBulkItem;
+use NetsvrProtocol\TopicPublishBulkItem;
 use NetsvrBusiness\Container;
 use NetsvrBusiness\Contract\TaskSocketInterface;
 use NetsvrBusiness\Contract\TaskSocketMangerInterface;
@@ -268,21 +271,29 @@ abstract class NetBusTestAbstract extends TestCase
             //接收每个连接的数据，并判断是否与之前发送的一致
             $this->assertTrue($message === $client->receive()->getContent());
         }
+        //批量广播，每个连接都会按顺序收到全部数据
+        $dataList = [uniqid(), uniqid()];
+        NetBus::broadcastBulk($dataList);
+        foreach (static::$wsClients as $client) {
+            foreach ($dataList as $datum) {
+                $this->assertTrue($datum === $client->receive()->getContent(), "返回的批量广播消息不符合预期");
+            }
+        }
     }
 
     /**
-     * composer test -- --filter=testMulticastByUniqId
+     * composer test -- --filter=testSendToUniqIds
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public function testMulticastByUniqId(): void
+    public function testSendToUniqIds(): void
     {
         //连接到网关
         $this->resetWsClient();
         $uniqIds = $this->getDefaultUniqIds();
         $message = uniqid() . str_repeat('a', 10);
-        NetBus::multicast($uniqIds, $message);
+        NetBus::sendToUniqIds($uniqIds, $message);
         foreach (static::$wsClients as $client) {
             //接收每个连接的数据，并判断是否与之前发送的一致
             $this->assertTrue($message === $client->receive()->getContent());
@@ -290,12 +301,12 @@ abstract class NetBusTestAbstract extends TestCase
     }
 
     /**
-     * composer test -- --filter=testMulticastByCustomerId
+     * composer test -- --filter=testSendToCustomerIds
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public function testMulticastByCustomerId(): void
+    public function testSendToCustomerIds(): void
     {
         //连接到网关
         $this->resetWsClient();
@@ -312,7 +323,7 @@ abstract class NetBusTestAbstract extends TestCase
             $customerIds[$uniqId] = $customerIdIncrement;
         }
         $message = uniqid() . str_repeat('a', 10);
-        NetBus::multicastByCustomerId($customerIds, $message);
+        NetBus::sendToCustomerIds($customerIds, $message);
         foreach (static::$wsClients as $client) {
             //接收每个连接的数据，并判断是否与之前发送的一致
             $this->assertTrue($message === $client->receive()->getContent());
@@ -320,12 +331,12 @@ abstract class NetBusTestAbstract extends TestCase
     }
 
     /**
-     * composer test -- --filter=testSingleCastByUniqId
+     * composer test -- --filter=testSendToUniqId
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public function testSingleCastByUniqId(): void
+    public function testSendToUniqId(): void
     {
         //连接到网关
         $this->resetWsClient();
@@ -334,7 +345,7 @@ abstract class NetBusTestAbstract extends TestCase
         foreach ($uniqIds as $uniqId) {
             $message[$uniqId] = uniqid() . str_repeat('a', (int)(65536 * 3.5));
             //给每个连接单播数据过去
-            NetBus::singleCast($uniqId, $message[$uniqId]);
+            NetBus::sendToUniqId($uniqId, $message[$uniqId]);
         }
         foreach (static::$wsClients as $uniqId => $client) {
             //接收每个连接的单播数据，并判断是否与之前发送的一致
@@ -343,12 +354,12 @@ abstract class NetBusTestAbstract extends TestCase
     }
 
     /**
-     * composer test -- --filter=testSingleCastByCustomerId
+     * composer test -- --filter=testSendToCustomerId
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public function testSingleCastByCustomerId(): void
+    public function testSendToCustomerId(): void
     {
         //连接到网关
         $this->resetWsClient();
@@ -369,7 +380,7 @@ abstract class NetBusTestAbstract extends TestCase
             //记录每个uniqId的数据
             $message[$uniqId] = uniqid() . str_repeat('a', (int)(65536 * 3.5));
             //给每个连接单播数据过去
-            NetBus::singleCastByCustomerId($customerId, $message[$uniqId]);
+            NetBus::sendToCustomerId($customerId, $message[$uniqId]);
         }
         //接收每个连接的单播数据
         foreach (static::$wsClients as $uniqId => $client) {
@@ -379,85 +390,57 @@ abstract class NetBusTestAbstract extends TestCase
     }
 
     /**
-     * composer test -- --filter=testSingleCastBulkByUniqId
+     * composer test -- --filter=testSingleCastBulk
      * @return void
      * @throws ContainerExceptionInterface
      * @throws NotFoundExceptionInterface
      */
-    public function testSingleCastBulkByUniqId(): void
+    public function testSingleCastBulk(): void
     {
         //连接到网关
         $this->resetWsClient();
         $uniqIds = $this->getDefaultUniqIds();
-        //测试这种入参结构：['目标uniqId1'=>'数据1', '目标uniqId2'=>'数据2']
-        $params = [];
+        //每一项一个目标、一条数据，等价于给每个连接各发一条不同的数据
+        $items = [];
+        $validData = [];
         foreach ($uniqIds as $uniqId) {
-            $params[$uniqId] = uniqid();
+            $datum = uniqid();
+            $validData[$uniqId][] = $datum;
+            $items[] = (new SingleCastBulkItem())->setUniqIds([$uniqId])->setData([$datum]);
         }
-        //将数据批量的单播出去
-        NetBus::singleCastBulk($params);
-        //接收每个连接的数据，并判断是否为刚刚批量单播出去的数据
+        NetBus::singleCastBulk($items);
         foreach (static::$wsClients as $uniqId => $client) {
-            $this->assertTrue($params[$uniqId] === $client->receive()->getContent());
-        }
-        //测试这种入参结构：['目标uniqId1'=>'数据1']
-        $params = [];
-        foreach ($uniqIds as $uniqId) {
-            $params[$uniqId] = uniqid();
-            break;
-        }
-        //将数据批量的单播出去
-        NetBus::singleCastBulk($params);
-        //接收每个连接的数据，并判断是否为刚刚批量单播出去的数据
-        foreach (static::$wsClients as $uniqId => $client) {
-            if (!isset($params[$uniqId])) {
-                break;
+            foreach ($validData[$uniqId] as $datum) {
+                $this->assertTrue($datum === $client->receive()->getContent(), "返回的批量单播消息不符合预期");
             }
-            $this->assertTrue($params[$uniqId] === $client->receive()->getContent());
         }
-        //测试这种入参结构：['uniqIds'=>['目标uniqId1', '目标uniqId2'], 'data'=>['数据1', '数据2']]
-        $params = [];
-        foreach ($uniqIds as $uniqId) {
-            $params['uniqIds'][] = $uniqId;
-            $params['data'][] = uniqid();
+        //一项内多个目标共享同一条数据
+        $datum = uniqid();
+        $items = [(new SingleCastBulkItem())->setUniqIds($uniqIds)->setData([$datum])];
+        NetBus::singleCastBulk($items);
+        foreach (static::$wsClients as $client) {
+            $this->assertTrue($datum === $client->receive()->getContent(), "返回的批量单播消息不符合预期");
         }
-        //将数据批量的单播出去
-        NetBus::singleCastBulk($params);
-        //接收每个连接的数据，并判断是否为刚刚批量单播出去的数据
+        //一项内一个目标接收多条数据
+        $targetUniqId = $uniqIds[0];
+        $dataList = [uniqid(), uniqid()];
+        $items = [(new SingleCastBulkItem())->setUniqIds([$targetUniqId])->setData($dataList)];
+        NetBus::singleCastBulk($items);
         foreach (static::$wsClients as $uniqId => $client) {
-            $index = intval(array_search($uniqId, $params['uniqIds']));
-            $this->assertTrue($params['data'][$index] === $client->receive()->getContent());
-        }
-        //测试这种入参结构：['uniqIds'=>'目标uniqId1', 'data'=>['数据1', '数据2']]
-        $params = [
-            'uniqIds' => $uniqIds[0],
-            'data' => [uniqid(), uniqid()],
-        ];
-        //将数据批量的单播出去
-        NetBus::singleCastBulk($params);
-        //接收每个连接的数据，并判断是否为刚刚批量单播出去的数据
-        foreach (static::$wsClients as $uniqId => $client) {
-            if ($uniqId !== $params['uniqIds']) {
+            if ($uniqId !== $targetUniqId) {
                 continue;
             }
-            foreach ($params['data'] as $datum) {
-                $this->assertTrue($datum === $client->receive()->getContent());
+            foreach ($dataList as $datum) {
+                $this->assertTrue($datum === $client->receive()->getContent(), "返回的批量单播消息不符合预期");
             }
         }
-        //测试这种入参结构：['uniqIds'=>['目标uniqId1'], 'data'=>['数据1', '数据2']]
-        $params = [
-            'uniqIds' => [$uniqIds[0]],
-            'data' => [uniqid(), uniqid()],
-        ];
-        //将数据批量的单播出去
-        NetBus::singleCastBulk($params);
-        //接收每个连接的数据，并判断是否为刚刚批量单播出去的数据
-        foreach (static::$wsClients as $uniqId => $client) {
-            if ($uniqId !== $params['uniqIds'][0]) {
-                continue;
-            }
-            foreach ($params['data'] as $datum) {
-                $this->assertTrue($datum === $client->receive()->getContent());
+        //一项内多个目标 × 多条数据：每个目标都会按顺序收到全部数据
+        $dataList = [uniqid(), uniqid()];
+        $items = [(new SingleCastBulkItem())->setUniqIds($uniqIds)->setData($dataList)];
+        NetBus::singleCastBulk($items);
+        foreach (static::$wsClients as $client) {
+            foreach ($dataList as $datum) {
+                $this->assertTrue($datum === $client->receive()->getContent(), "返回的批量单播消息不符合预期");
             }
         }
     }
@@ -482,84 +465,49 @@ abstract class NetBusTestAbstract extends TestCase
             $customerIdIncrement++;
             $up->setNewCustomerId($customerIdIncrement);
             NetBus::connInfoUpdate($up);
-            $customerIds[$uniqId] = $customerIdIncrement;
+            $customerIds[$uniqId] = (string)$customerIdIncrement;
         }
-        //测试这种入参结构：['目标customerId1'=>'数据1', '目标customerId2'=>'数据2']
-        $params = [];
-        foreach ($customerIds as $customerId) {
-            $params[$customerId] = uniqid();
+        //每一项一个客户、一条数据，等价于给每个客户各发一条不同的数据
+        $items = [];
+        $validData = [];
+        foreach ($customerIds as $uniqId => $customerId) {
+            $datum = uniqid();
+            $validData[$uniqId][] = $datum;
+            $items[] = (new SingleCastBulkByCustomerIdItem())->setCustomerIds([$customerId])->setData([$datum]);
         }
-        //将数据批量的单播出去
-        NetBus::singleCastBulkByCustomerId($params);
-        //接收每个连接的数据，并判断是否为刚刚批量单播出去的数据
+        NetBus::singleCastBulkByCustomerId($items);
         foreach (static::$wsClients as $uniqId => $client) {
-            $customerId = $customerIds[$uniqId];
-            $this->assertTrue($params[$customerId] === $client->receive()->getContent());
-        }
-        //测试这种入参结构：['目标customerId1'=>'数据1']
-        $params = [];
-        foreach ($customerIds as $customerId) {
-            $params[$customerId] = uniqid();
-            break;
-        }
-        //将数据批量的单播出去
-        NetBus::singleCastBulkByCustomerId($params);
-        //接收每个连接的数据，并判断是否为刚刚批量单播出去的数据
-        foreach (static::$wsClients as $uniqId => $client) {
-            $customerId = $customerIds[$uniqId];
-            if (!isset($params[$customerId])) {
-                break;
+            foreach ($validData[$uniqId] as $datum) {
+                $this->assertTrue($datum === $client->receive()->getContent(), "返回的批量单播消息不符合预期");
             }
-            $this->assertTrue($params[$customerId] === $client->receive()->getContent());
         }
-        //测试这种入参结构：['customerIds'=>['目标customerId1', '目标customerId2'], 'data'=>['数据1', '数据2']]
-        $params = [];
-        foreach ($customerIds as $customerId) {
-            $params['customerIds'][] = $customerId;
-            $params['data'][] = uniqid();
+        //一项内多个客户共享同一条数据
+        $datum = uniqid();
+        $items = [(new SingleCastBulkByCustomerIdItem())->setCustomerIds(array_values($customerIds))->setData([$datum])];
+        NetBus::singleCastBulkByCustomerId($items);
+        foreach (static::$wsClients as $client) {
+            $this->assertTrue($datum === $client->receive()->getContent(), "返回的批量单播消息不符合预期");
         }
-        //将数据批量的单播出去
-        NetBus::singleCastBulkByCustomerId($params);
-        //接收每个连接的数据，并判断是否为刚刚批量单播出去的数据
-        foreach (static::$wsClients as $uniqId => $client) {
-            $customerId = $customerIds[$uniqId];
-            $index = intval(array_search($customerId, $params['customerIds']));
-            $this->assertTrue($params['data'][$index] === $client->receive()->getContent());
-        }
-        //测试这种入参结构：['customerIds'=>'目标customerId1', 'data'=>['数据1', '数据2']]
+        //一项内一个客户接收多条数据
         $targetUniqId = array_key_last($customerIds);
-        $params = [
-            'customerIds' => $customerIds[$targetUniqId],
-            'data' => [uniqid(), uniqid()],
-        ];
-        //将数据批量的单播出去
-        NetBus::singleCastBulkByCustomerId($params);
-        //接收每个连接的数据，并判断是否为刚刚批量单播出去的数据
+        $dataList = [uniqid(), uniqid()];
+        $items = [(new SingleCastBulkByCustomerIdItem())->setCustomerIds([$customerIds[$targetUniqId]])->setData($dataList)];
+        NetBus::singleCastBulkByCustomerId($items);
         foreach (static::$wsClients as $uniqId => $client) {
             if ($uniqId !== $targetUniqId) {
                 continue;
             }
-            foreach ($params['data'] as $datum) {
-                $this->assertTrue($datum === $client->receive()->getContent());
+            foreach ($dataList as $datum) {
+                $this->assertTrue($datum === $client->receive()->getContent(), "返回的批量单播消息不符合预期");
             }
         }
-        //测试这种入参结构：['uniqIds'=>['目标uniqId1'], 'data'=>['数据1', '数据2']]
-        $targetUniqId = array_key_last($customerIds);
-        $params = [
-            'customerIds' => [
-                $customerIds[$targetUniqId],
-            ],
-            'data' => [uniqid(), uniqid()],
-        ];
-        //将数据批量的单播出去
-        NetBus::singleCastBulkByCustomerId($params);
-        //接收每个连接的数据，并判断是否为刚刚批量单播出去的数据
-        foreach (static::$wsClients as $uniqId => $client) {
-            if ($uniqId !== $targetUniqId) {
-                continue;
-            }
-            foreach ($params['data'] as $datum) {
-                $this->assertTrue($datum === $client->receive()->getContent());
+        //一项内多个客户 × 多条数据：每个客户都会按顺序收到全部数据
+        $dataList = [uniqid(), uniqid()];
+        $items = [(new SingleCastBulkByCustomerIdItem())->setCustomerIds(array_values($customerIds))->setData($dataList)];
+        NetBus::singleCastBulkByCustomerId($items);
+        foreach (static::$wsClients as $client) {
+            foreach ($dataList as $datum) {
+                $this->assertTrue($datum === $client->receive()->getContent(), "返回的批量单播消息不符合预期");
             }
         }
     }
@@ -670,12 +618,12 @@ abstract class NetBusTestAbstract extends TestCase
     }
 
     /**
-     * composer test -- --filter=testTopicPublishGeneral
+     * composer test -- --filter=testPublishToTopics
      * @throws NotFoundExceptionInterface
      * @throws Throwable
      * @throws ContainerExceptionInterface
      */
-    public function testTopicPublishGeneral()
+    public function testPublishToTopics()
     {
         //连接到网关
         $this->resetWsClient();
@@ -689,7 +637,7 @@ abstract class NetBusTestAbstract extends TestCase
         //待发布的内容
         $publish = uniqid();
         //同时向两个主题发送相同的消息
-        NetBus::topicPublish($topics, $publish);
+        NetBus::publishToTopics($topics, $publish);
         foreach (static::$wsClients as $client) {
             //每个连接都必须接收到主题次数的消息数量
             $error = null;
@@ -701,6 +649,31 @@ abstract class NetBusTestAbstract extends TestCase
                 }
             }
             $this->assertNull($error, "接收的发布消息数量不符合预期: $error");
+        }
+    }
+
+    /**
+     * composer test -- --filter=testPublishToTopic
+     * @throws NotFoundExceptionInterface
+     * @throws Throwable
+     * @throws ContainerExceptionInterface
+     */
+    public function testPublishToTopic()
+    {
+        //连接到网关
+        $this->resetWsClient();
+        //先订阅
+        $uniqIds = $this->getDefaultUniqIds();
+        $topic = uniqid('topic');
+        foreach ($uniqIds as $uniqId) {
+            //每个连接都订阅该主题
+            NetBus::topicSubscribe($uniqId, [$topic]);
+        }
+        //向该主题发布一条数据
+        $publish = uniqid('data');
+        NetBus::publishToTopic($topic, $publish);
+        foreach (static::$wsClients as $client) {
+            $this->assertTrue($publish === $client->receive()->getContent(), "返回的发布消息不符合预期");
         }
     }
 
@@ -721,17 +694,20 @@ abstract class NetBusTestAbstract extends TestCase
             //每个连接都订阅两个主题
             NetBus::topicSubscribe($uniqId, $topics);
         }
-        //测试一个topic对应一个内容的情况
-        $params = [];
+        //每一项一个主题、一条数据
+        $items = [];
+        $dataList = [];
         foreach ($topics as $topic) {
-            $params[$topic] = uniqid('data');
+            $publish = uniqid('data');
+            $dataList[] = $publish;
+            $items[] = (new TopicPublishBulkItem())->setTopics([$topic])->setData([$publish]);
         }
         //发送到网关
-        NetBus::topicPublishBulk($params);
+        NetBus::topicPublishBulk($items);
         foreach (static::$wsClients as $client) {
             //每个连接都必须接收到主题次数的消息数量
             $error = null;
-            foreach ($params as $publish) {
+            foreach ($dataList as $publish) {
                 try {
                     $this->assertTrue($client->receive()->getContent() === $publish, "返回的批量发布消息不符合预期");
                 } catch (Throwable $throwable) {
@@ -740,15 +716,13 @@ abstract class NetBusTestAbstract extends TestCase
             }
             $this->assertNull($error, "接收的批量发布消息数量不符合预期: $error");
         }
-        //测试一个topic对应多个内容的情况
-        $params = [
-            'topics' => $topics[0],
-            'data' => [uniqid('data'), uniqid('data')],
-        ];
-        NetBus::topicPublishBulk($params);
+        //一项内一个主题接收多条数据
+        $dataList = [uniqid('data'), uniqid('data')];
+        $items = [(new TopicPublishBulkItem())->setTopics([$topics[0]])->setData($dataList)];
+        NetBus::topicPublishBulk($items);
         foreach (static::$wsClients as $client) {
             $error = null;
-            foreach ($params['data'] as $publish) {
+            foreach ($dataList as $publish) {
                 try {
                     $this->assertTrue($client->receive()->getContent() === $publish, "返回的批量发布消息不符合预期");
                 } catch (Throwable $throwable) {
@@ -957,10 +931,12 @@ abstract class NetBusTestAbstract extends TestCase
             NetBus::topicSubscribe($uniqId, $topics);
         }
         //获取网关的主题数量
-        $ret = NetBus::topicCount()->toArray();
-        foreach ($ret as $value) {
+        $topicCountRet = NetBus::topicCount();
+        foreach ($topicCountRet->toArray() as $value) {
             $this->assertTrue(count($topics) == $value['count'], "返回的topic数量不符合预期");
         }
+        //多网关部署时，不同网关之间的同名主题会被重复统计，所以总数是：主题数 × 网关数
+        $this->assertEquals(count($topics) * count(static::getNetsvrConfig()['netsvr']), $topicCountRet->getCount(), "TopicCountRet::getCount 不符合预期");
     }
 
     /**
@@ -1203,14 +1179,14 @@ abstract class NetBusTestAbstract extends TestCase
             $this->assertEquals($item->getTopics()->offsetGet(0), $uniqId . 'Topic', "网关返回的用户topics不符合预期");
         }
         //测试有数据的情况下，，只获取customerId
-        $ret = NetBus::connInfo($uniqIds, true, false, false)->getItems();
+        $ret = NetBus::connInfo($uniqIds, false, true, false)->getItems();
         foreach ($ret as $uniqId => $item) {
             $this->assertEquals($item->getCustomerId(), $uniqId . 'CustomerId', "网关返回的用户customerId不符合预期");
             $this->assertEmpty($item->getSession(), "网关返回的用户session不符合预期");
             $this->assertEmpty(repeatedFieldToArray($item->getTopics()), "网关返回的用户topics不符合预期");
         }
         //测试有数据的情况下，只获取session
-        $ret = NetBus::connInfo($uniqIds, false, true, false)->getItems();
+        $ret = NetBus::connInfo($uniqIds, true, false, false)->getItems();
         foreach ($ret as $uniqId => $item) {
             $this->assertEmpty($item->getCustomerId(), "网关返回的用户customerId不符合预期");
             $this->assertEquals($item->getSession(), $uniqId . 'Session', "网关返回的用户session不符合预期");
@@ -1335,5 +1311,179 @@ abstract class NetBusTestAbstract extends TestCase
             $expected = count($this->getDefaultUniqIdsByAddr($value['addr']));
             $this->assertEquals($expected, $value['count'], "返回的customerId数量不符合预期");
         }
+    }
+
+    /**
+     * 验证 uniqId 维度的 Ret 辅助方法：一个连接只属于一个网关，跨网关直接合并、不去重
+     * composer test -- --filter=testRetForUniqIdDimension
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     * @throws Throwable
+     */
+    public function testRetForUniqIdDimension(): void
+    {
+        //连接到网关
+        $this->resetWsClient();
+        $gatewayNum = count(static::getNetsvrConfig()['netsvr']);
+        $uniqIds = $this->getDefaultUniqIds();
+        sort($uniqIds);
+        //检查是否在线
+        $checkOnlineRet = NetBus::checkOnline($uniqIds);
+        $retUniqIds = $checkOnlineRet->getUniqIds();
+        sort($retUniqIds);
+        $this->assertEquals($uniqIds, $retUniqIds, "CheckOnlineRet::getUniqIds 不符合预期");
+        $this->assertEquals(count($uniqIds), $checkOnlineRet->getLen(), "CheckOnlineRet::getLen 不符合预期");
+        $this->assertTrue($checkOnlineRet->has($uniqIds[0]), "CheckOnlineRet::has 命中失败");
+        $this->assertFalse($checkOnlineRet->has('notExistUniqId'), "CheckOnlineRet::has 未命中判断失败");
+        $this->assertCount($gatewayNum, $checkOnlineRet->toArray(), "CheckOnlineRet::toArray 不符合预期");
+        //获取网关中的全部连接
+        $uniqIdListRet = NetBus::uniqIdList();
+        $retUniqIds = $uniqIdListRet->getUniqIds();
+        sort($retUniqIds);
+        $this->assertEquals($uniqIds, $retUniqIds, "UniqIdListRet::getUniqIds 不符合预期");
+        $this->assertEquals(count($uniqIds), $uniqIdListRet->getLen(), "UniqIdListRet::getLen 不符合预期");
+        $this->assertTrue($uniqIdListRet->has($uniqIds[0]), "UniqIdListRet::has 命中失败");
+        $this->assertFalse($uniqIdListRet->has('notExistUniqId'), "UniqIdListRet::has 未命中判断失败");
+        //获取连接的详情
+        $connInfoRet = NetBus::connInfo($uniqIds);
+        $this->assertNull($connInfoRet->get('notExistUniqId'), "ConnInfoRet::get 未命中应返回 null");
+        foreach ($uniqIds as $uniqId) {
+            $item = $connInfoRet->get($uniqId);
+            $this->assertNotNull($item, "ConnInfoRet::get 命中失败");
+            $this->assertSame('', $item->getSession(), "ConnInfoRet::get 返回的 session 不符合预期");
+        }
+    }
+
+    /**
+     * 验证 customerId 维度的 Ret 辅助方法：同一个客户可能连接到多个网关，跨网关需要去重
+     * composer test -- --filter=testRetForCustomerIdDimension
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     * @throws Throwable
+     */
+    public function testRetForCustomerIdDimension(): void
+    {
+        //连接到网关
+        $this->resetWsClient();
+        $uniqIds = $this->getDefaultUniqIds();
+        //先给每个连接设置一个唯一的 customerId
+        $customerIds = [];
+        foreach ($uniqIds as $uniqId) {
+            $customerIds[$uniqId] = $uniqId . 'CustomerId';
+            $up = new ConnInfoUpdate();
+            $up->setUniqId($uniqId);
+            $up->setNewCustomerId($customerIds[$uniqId]);
+            NetBus::connInfoUpdate($up);
+        }
+        //再让每个网关各有一个连接共享同一个 customerId，用于验证跨网关去重
+        $sharedCustomerId = uniqid('sharedCustomerId');
+        $sharedUniqIds = [];
+        foreach (static::getNetsvrConfig()['netsvr'] as $config) {
+            $addrUniqIds = $this->getDefaultUniqIdsByAddr($config['addr']);
+            if (!isset($addrUniqIds[0])) {
+                continue;
+            }
+            $sharedUniqIds[] = $addrUniqIds[0];
+            $customerIds[$addrUniqIds[0]] = $sharedCustomerId;
+            $up = new ConnInfoUpdate();
+            $up->setUniqId($addrUniqIds[0]);
+            $up->setNewCustomerId($sharedCustomerId);
+            NetBus::connInfoUpdate($up);
+        }
+        //期望的客户列表：跨网关去重后的 customerId
+        $expectCustomerIds = array_values(array_unique(array_values($customerIds)));
+        sort($expectCustomerIds);
+        $customerIdListRet = NetBus::customerIdList();
+        $retCustomerIds = $customerIdListRet->getCustomerIds();
+        sort($retCustomerIds);
+        $this->assertEquals($expectCustomerIds, $retCustomerIds, "CustomerIdListRet::getCustomerIds 不符合预期");
+        $this->assertCount(count($expectCustomerIds), $retCustomerIds, "CustomerIdListRet::getCustomerIds 未跨网关去重");
+        $this->assertEquals(count($expectCustomerIds), $customerIdListRet->getLen(), "CustomerIdListRet::getLen 不符合预期");
+        $this->assertTrue($customerIdListRet->has($sharedCustomerId), "CustomerIdListRet::has 命中失败");
+        $this->assertFalse($customerIdListRet->has('notExistCustomerId'), "CustomerIdListRet::has 未命中判断失败");
+        //获取共享客户的全部连接，应该每个网关一条
+        $connInfoByCustomerIdRet = NetBus::connInfoByCustomerId([$sharedCustomerId]);
+        $items = $connInfoByCustomerIdRet->get($sharedCustomerId);
+        $retUniqIds = array_map(function ($item) {
+            return $item->getUniqId();
+        }, $items);
+        sort($retUniqIds);
+        $expectUniqIds = $sharedUniqIds;
+        sort($expectUniqIds);
+        $this->assertEquals($expectUniqIds, $retUniqIds, "ConnInfoByCustomerIdRet::get 不符合预期");
+        $this->assertSame([], $connInfoByCustomerIdRet->get('notExistCustomerId'), "ConnInfoByCustomerIdRet::get 未命中应返回空数组");
+        //转为数组后，一行是一个连接
+        $this->assertCount(count($expectUniqIds), $connInfoByCustomerIdRet->toArray(), "ConnInfoByCustomerIdRet::toArray 不符合预期");
+    }
+
+    /**
+     * 验证 topic 维度的 Ret 辅助方法：同名主题可能分布在多个网关，跨网关需要去重
+     * composer test -- --filter=testRetForTopicDimension
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
+     * @throws Throwable
+     */
+    public function testRetForTopicDimension(): void
+    {
+        //连接到网关
+        $this->resetWsClient();
+        $uniqIds = $this->getDefaultUniqIds();
+        sort($uniqIds);
+        $topics = [uniqid('topic'), uniqid('topic')];
+        //每个连接都订阅全部主题，并用 uniqId 作为 customerId，方便断言
+        foreach ($uniqIds as $uniqId) {
+            $up = new ConnInfoUpdate();
+            $up->setUniqId($uniqId);
+            $up->setNewTopics($topics);
+            $up->setNewCustomerId($uniqId);
+            NetBus::connInfoUpdate($up);
+        }
+        //主题列表
+        $topicListRet = NetBus::topicList();
+        $retTopics = $topicListRet->getTopics();
+        sort($retTopics);
+        $expectTopics = $topics;
+        sort($expectTopics);
+        $this->assertEquals($expectTopics, $retTopics, "TopicListRet::getTopics 不符合预期");
+        $this->assertTrue($topicListRet->has($topics[0]), "TopicListRet::has 命中失败");
+        $this->assertFalse($topicListRet->has('notExistTopic'), "TopicListRet::has 未命中判断失败");
+        //主题包含的连接
+        $topicUniqIdListRet = NetBus::topicUniqIdList($topics);
+        foreach ($topics as $topic) {
+            $retUniqIds = $topicUniqIdListRet->getTopicUniqIds($topic);
+            sort($retUniqIds);
+            $this->assertEquals($uniqIds, $retUniqIds, "TopicUniqIdListRet::getTopicUniqIds($topic) 不符合预期");
+        }
+        $this->assertSame([], $topicUniqIdListRet->getTopicUniqIds('notExistTopic'), "TopicUniqIdListRet::getTopicUniqIds 主题不存在应返回空数组");
+        $topicUniqIds = $topicUniqIdListRet->getUniqIds();
+        $this->assertCount(count($topics), $topicUniqIds, "TopicUniqIdListRet::getUniqIds 不符合预期");
+        foreach ($topics as $topic) {
+            $retUniqIds = $topicUniqIds[$topic];
+            sort($retUniqIds);
+            $this->assertEquals($uniqIds, $retUniqIds, "TopicUniqIdListRet::getUniqIds[$topic] 不符合预期");
+        }
+        //主题包含的客户
+        $topicCustomerIdListRet = NetBus::topicCustomerIdList($topics);
+        $topicCustomerIdToUniqIdsListRet = NetBus::topicCustomerIdToUniqIdsList($topics);
+        $topicCustomerIds = $topicCustomerIdListRet->getCustomerIds();
+        foreach ($topics as $topic) {
+            $retCustomerIds = $topicCustomerIdListRet->getTopicCustomerIds($topic);
+            sort($retCustomerIds);
+            $this->assertEquals($uniqIds, $retCustomerIds, "TopicCustomerIdListRet::getTopicCustomerIds($topic) 不符合预期");
+            $retCustomerIds = $topicCustomerIds[$topic];
+            sort($retCustomerIds);
+            $this->assertEquals($uniqIds, $retCustomerIds, "TopicCustomerIdListRet::getCustomerIds[$topic] 不符合预期");
+            //主题包含的客户，以及这些客户的全部连接
+            $retCustomerIds = $topicCustomerIdToUniqIdsListRet->getTopicCustomerIds($topic);
+            sort($retCustomerIds);
+            $this->assertEquals($uniqIds, $retCustomerIds, "TopicCustomerIdToUniqIdsListRet::getTopicCustomerIds($topic) 不符合预期");
+            foreach ($uniqIds as $uniqId) {
+                //每个客户只有一个连接
+                $this->assertEquals([$uniqId], $topicCustomerIdToUniqIdsListRet->getCustomerUniqIds($topic, $uniqId), "TopicCustomerIdToUniqIdsListRet::getCustomerUniqIds($topic, $uniqId) 不符合预期");
+            }
+        }
+        $this->assertSame([], $topicCustomerIdListRet->getTopicCustomerIds('notExistTopic'), "TopicCustomerIdListRet::getTopicCustomerIds 主题不存在应返回空数组");
+        $this->assertSame([], $topicCustomerIdToUniqIdsListRet->getTopicCustomerIds('notExistTopic'), "TopicCustomerIdToUniqIdsListRet::getTopicCustomerIds 主题不存在应返回空数组");
+        $this->assertSame([], $topicCustomerIdToUniqIdsListRet->getCustomerUniqIds('notExistTopic', 'notExistCustomerId'), "TopicCustomerIdToUniqIdsListRet::getCustomerUniqIds 目标不存在应返回空数组");
     }
 }

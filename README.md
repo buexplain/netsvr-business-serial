@@ -351,7 +351,7 @@ class NetsvrBootstrap implements Bootstrap
             public function onMessage(Transfer $transfer): void
             {
                 //将消息转发给NetBus，NetBus会根据uniqId将消息转发给对应的客户端
-                NetBus::singleCast($transfer->getUniqId(), $transfer->getData());
+                NetBus::sendToUniqId($transfer->getUniqId(), $transfer->getData());
             }
 
             /**
