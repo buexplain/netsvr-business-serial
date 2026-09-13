@@ -31,6 +31,36 @@ class TopicListRet
     public array $data = array();
 
     /**
+     * 获取所有主题；同名主题可能分布在多个网关，跨网关合并后去重
+     * @return array|string[]
+     */
+    public function getTopics(): array
+    {
+        $ret = array();
+        foreach ($this->data as $value) {
+            array_push($ret, ...repeatedFieldToArray($value->getTopics()));
+        }
+        return array_values(array_unique($ret));
+    }
+
+    /**
+     * 判断网关中是否存在该主题
+     * @param string $topic
+     * @return bool
+     */
+    public function has(string $topic): bool
+    {
+        foreach ($this->data as $value) {
+            foreach ($value->getTopics() as $topicValue) {
+                if ($topicValue === $topic) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * @return array
      */
     public function toArray(): array

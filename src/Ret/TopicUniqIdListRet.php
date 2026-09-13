@@ -31,6 +31,46 @@ class TopicUniqIdListRet
      */
     public array $data = array();
 
+    /**
+     * 获取该主题包含的uniqId；一个连接只属于一个网关，各网关的uniqId不会重复，直接合并即可。
+     * 主题不存在时返回空数组
+     * @param string $topic
+     * @return array|string[]
+     */
+    public function getTopicUniqIds(string $topic): array
+    {
+        $ret = [];
+        foreach ($this->data as $value) {
+            $item = $value->getItems()[$topic] ?? null;
+            if ($item === null) {
+                continue;
+            }
+            array_push($ret, ...repeatedFieldToArray($item->getUniqIds()));
+        }
+        return $ret;
+    }
+
+    /**
+     * 获取所有主题及其uniqId；一个连接只属于一个网关，同一个主题的uniqId跨网关直接合并即可
+     * @return array|array<string,array<int,string>>
+     */
+    public function getUniqIds(): array
+    {
+        $ret = [];
+        foreach ($this->data as $value) {
+            foreach ($value->getItems() as $topic => $item) {
+                /**
+                 * @var $item TopicUniqIdListRespItem
+                 */
+                if (!isset($ret[$topic])) {
+                    $ret[$topic] = [];
+                }
+                array_push($ret[$topic], ...repeatedFieldToArray($item->getUniqIds()));
+            }
+        }
+        return $ret;
+    }
+
     public function toArray(): array
     {
         $ret = [];

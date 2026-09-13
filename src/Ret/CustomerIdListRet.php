@@ -31,6 +31,45 @@ class CustomerIdListRet
     public array $data = array();
 
     /**
+     * 获取所有customerId；同一个客户可能连接到多个网关，跨网关合并后去重
+     * @return array|string[]
+     */
+    public function getCustomerIds(): array
+    {
+        $ret = array();
+        foreach ($this->data as $value) {
+            array_push($ret, ...repeatedFieldToArray($value->getCustomerIds()));
+        }
+        return array_values(array_unique($ret));
+    }
+
+    /**
+     * 判断某个customerId是否在线
+     * @param string $customerId
+     * @return bool
+     */
+    public function has(string $customerId): bool
+    {
+        foreach ($this->data as $value) {
+            foreach ($value->getCustomerIds() as $customerIdValue) {
+                if ($customerIdValue === $customerId) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 获取去重后的在线客户数；同一个客户可能连接到多个网关
+     * @return int
+     */
+    public function getLen(): int
+    {
+        return count($this->getCustomerIds());
+    }
+
+    /**
      * @return array
      */
     public function toArray(): array

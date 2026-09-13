@@ -44,6 +44,36 @@ class UniqIdListRet
     }
 
     /**
+     * 判断某个uniqId是否在线
+     * @param string $uniqId
+     * @return bool
+     */
+    public function has(string $uniqId): bool
+    {
+        foreach ($this->data as $item) {
+            foreach ($item->getUniqIds() as $uniqIdValue) {
+                if ($uniqIdValue === $uniqId) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 获取在线的连接数；一个连接只属于一个网关，各网关的uniqId不会重复，直接累加即可
+     * @return int
+     */
+    public function getLen(): int
+    {
+        $ret = 0;
+        foreach ($this->data as $item) {
+            $ret += $item->getUniqIds()->count();
+        }
+        return $ret;
+    }
+
+    /**
      * 转为数组
      * @return array
      */

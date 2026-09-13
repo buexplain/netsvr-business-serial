@@ -50,6 +50,22 @@ class ConnInfoRet
     }
 
     /**
+     * 获取某个uniqId的连接信息；一个连接只属于一个网关，命中即返回，未命中返回null
+     * @param string $uniqId
+     * @return ConnInfoRespItem|null
+     */
+    public function get(string $uniqId): ?ConnInfoRespItem
+    {
+        foreach ($this->data as $resp) {
+            $item = $resp->getItems()[$uniqId] ?? null;
+            if ($item instanceof ConnInfoRespItem) {
+                return $item;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 转为数组
      * @return array
      */

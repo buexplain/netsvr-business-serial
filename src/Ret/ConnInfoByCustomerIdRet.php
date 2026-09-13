@@ -79,6 +79,26 @@ class ConnInfoByCustomerIdRet
     }
 
     /**
+     * 获取某个customerId的全部连接；同一个客户可能连接到多个网关，各网关的连接会合并
+     * @param string $customerId
+     * @return array|ConnInfoByCustomerIdRespItem[]
+     */
+    public function get(string $customerId): array
+    {
+        $ret = array();
+        foreach ($this->data as $value) {
+            $items = $value->getItems()[$customerId] ?? null;
+            if (!$items instanceof ConnInfoByCustomerIdRespItems) {
+                continue;
+            }
+            foreach ($items->getItems() as $item) {
+                $ret[] = $item;
+            }
+        }
+        return $ret;
+    }
+
+    /**
      * 转为数组
      * @return array
      */

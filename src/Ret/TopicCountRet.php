@@ -30,6 +30,19 @@ class TopicCountRet
     public array $data = array();
 
     /**
+     * 获取总计数；多网关部署时不同网关之间的同名主题会被重复统计，直接相加即可
+     * @return int
+     */
+    public function getCount(): int
+    {
+        $ret = 0;
+        foreach ($this->data as $value) {
+            $ret += $value->getCount();
+        }
+        return $ret;
+    }
+
+    /**
      * @return array
      */
     public function toArray(): array
